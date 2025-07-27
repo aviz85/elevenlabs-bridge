@@ -38,6 +38,7 @@ next-env.d.ts
 .idea/
 .cursor/
 .kiro/
+.swc/
 
 # Logs
 logs
