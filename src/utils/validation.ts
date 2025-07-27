@@ -5,6 +5,7 @@ export const SUPPORTED_AUDIO_FORMATS = [
   'audio/mp3',
   'audio/wav',
   'audio/m4a',
+  'audio/mp4', // M4A files are often detected as audio/mp4
   'audio/aac',
   'audio/ogg',
   'audio/flac'

@@ -1,0 +1,19 @@
+{
+  "functions": {
+    "src/pages/api/**/*.ts": {
+      "maxDuration": 300
+    }
+  },
+  "env": {
+    "SUPABASE_URL": "@supabase-url",
+    "SUPABASE_ANON_KEY": "@supabase-anon-key", 
+    "SUPABASE_SERVICE_ROLE_KEY": "@supabase-service-role-key",
+    "ELEVENLABS_API_KEY": "@elevenlabs-api-key",
+    "WEBHOOK_SECRET": "@webhook-secret"
+  },
+  "build": {
+    "env": {
+      "NEXT_TELEMETRY_DISABLED": "1"
+    }
+  }
+}

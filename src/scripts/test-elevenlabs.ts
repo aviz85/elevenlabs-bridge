@@ -3,8 +3,8 @@
  * Run with: npx ts-node src/scripts/test-elevenlabs.ts
  */
 
-import { elevenLabsService } from '../services/elevenlabs'
-import { logger } from '../lib/logger'
+import { elevenLabsService } from '../services/elevenlabs.js'
+import { logger } from '../lib/logger.js'
 
 async function testElevenLabsAPI() {
   console.log('🧪 Testing ElevenLabs API Connection...\n')

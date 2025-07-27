@@ -33,7 +33,7 @@ export class ElevenLabsService {
       // Create a Blob from the buffer
       const audioBlob = new Blob([audioBuffer], { type: 'audio/mpeg' })
       formData.append('file', audioBlob, 'audio.mp3')
-      formData.append('model_id', options.modelId)
+      formData.append('model_id', options.modelId || 'scribe_v1')
       
       if (options.languageCode) {
         formData.append('language_code', options.languageCode)
@@ -58,7 +58,7 @@ export class ElevenLabsService {
       const response = await fetch(`${this.baseUrl}/speech-to-text`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
+          'xi-api-key': this.apiKey,
           // Don't set Content-Type header - let the browser set it for FormData
         },
         body: formData
@@ -107,7 +107,7 @@ export class ElevenLabsService {
       const response = await fetch(`${this.baseUrl}/user`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
+          'xi-api-key': this.apiKey,
         }
       })
 
@@ -129,7 +129,7 @@ export class ElevenLabsService {
       const response = await fetch(`${this.baseUrl}/user`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
+          'xi-api-key': this.apiKey,
         }
       })
 
@@ -152,7 +152,7 @@ export class ElevenLabsService {
       const response = await fetch(`${this.baseUrl}/models`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
+          'xi-api-key': this.apiKey,
         }
       })
 

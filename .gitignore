@@ -37,7 +37,6 @@ next-env.d.ts
 .vscode/
 .idea/
 .cursor/
-.kiro/
 .swc/
 
 # Logs
@@ -53,3 +52,5 @@ pids
 # Temporary folders
 tmp/
 temp/
+
+test_input/
