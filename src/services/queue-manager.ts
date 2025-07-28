@@ -203,13 +203,11 @@ export class QueueManager {
       // Download segment file from storage
       const segmentBuffer = await audioProcessingService.downloadSegment(job.filePath)
 
-      // Construct webhook URL for this specific segment
-      const webhookUrl = this.constructWebhookUrl(job.segmentId)
-      
       // Send to ElevenLabs API for transcription with webhook integration
+      // Note: webhook URL is pre-configured in ElevenLabs dashboard
       const result = await elevenLabsService.transcribeAudio(segmentBuffer, {
         modelId: 'scribe_v1',
-        webhookUrl,
+        webhookUrl: 'webhook-configured', // Just trigger webhook mode
         diarize: true,
         tagAudioEvents: true
       })

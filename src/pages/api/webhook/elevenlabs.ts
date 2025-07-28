@@ -44,7 +44,7 @@ const handler = compose(
     ...context,
     taskId: task_id,
     status,
-    segmentId,
+    segmentId: segmentId || 'lookup-by-task-id', // Will lookup by elevenlabs_task_id if no segmentId
     hasResult: !!result,
     hasError: !!error
   })

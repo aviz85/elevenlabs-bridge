@@ -62,8 +62,11 @@ export class ElevenLabsService {
         // Configure webhook for async processing
         if (options.webhookUrl) {
           formData.append('webhook', 'true')
-          // Register webhook URL for this specific request
-          await this.registerWebhookUrl(options.webhookUrl)
+          // Note: Webhook URL must be pre-configured in ElevenLabs dashboard
+          // We don't send the URL dynamically - ElevenLabs will use the configured webhook
+          logger.info('Using webhook mode - URL must be configured in ElevenLabs dashboard', {
+            configuredWebhook: 'https://elevenlabs-bridge-henna.vercel.app/api/webhook/elevenlabs'
+          })
         }
 
         const response = await this.makeApiRequest(`${this.baseUrl}/speech-to-text`, {
