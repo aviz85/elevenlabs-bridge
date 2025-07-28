@@ -4,47 +4,57 @@ import { withErrorHandling, withMethodValidation, withValidation, compose } from
 import { ValidationError, AuthenticationError } from '@/lib/errors'
 import { logger } from '@/lib/logger'
 
-// Webhook validation - TEMPORARY DEBUG MODE
+// Webhook validation for ElevenLabs structure
 const validateElevenLabsWebhook = async (req: NextApiRequest) => {
-  // 🔍 FULL DEBUG MODE - Log absolutely everything
-  logger.info('🔍 ElevenLabs Debug Webhook - Full Request', {
-    method: req.method,
-    url: req.url,
-    query: req.query,
-    headers: req.headers,
-    body: req.body,
-    bodyType: typeof req.body,
-    bodyKeys: req.body ? Object.keys(req.body) : [],
-    contentType: req.headers['content-type'],
-    userAgent: req.headers['user-agent'],
-    timestamp: new Date().toISOString()
-  })
+  const { type, data } = req.body
 
-  // Log body content in detail
-  if (req.body) {
-    logger.info('🔍 ElevenLabs Debug Webhook - Body Details', {
-      bodyStringified: JSON.stringify(req.body, null, 2),
-      bodyValues: Object.entries(req.body).map(([key, value]) => ({
-        key,
-        value,
-        type: typeof value,
-        isNull: value === null,
-        isUndefined: value === undefined
-      }))
+  if (!type || !data) {
+    throw new ValidationError('Missing required fields: type, data', {
+      received: req.body,
+      missing: {
+        type: !type,
+        data: !data
+      }
     })
   }
 
-  // DON'T VALIDATE ANYTHING - JUST LOG AND CONTINUE
-  logger.info('🔍 Debug mode - skipping validation, accepting all webhooks')
+  if (type !== 'speech_to_text_transcription') {
+    throw new ValidationError('Invalid webhook type', {
+      expectedType: 'speech_to_text_transcription',
+      receivedType: type
+    })
+  }
+
+  if (!data.request_id) {
+    throw new ValidationError('Missing request_id in data', {
+      dataKeys: Object.keys(data || {}),
+      hasRequestId: !!data.request_id
+    })
+  }
+
+  logger.info('ElevenLabs webhook validation passed', {
+    type,
+    requestId: data.request_id,
+    hasTranscription: !!(data.transcription?.text)
+  })
 
   // Validate webhook signature if provided
-  const signature = req.headers['x-elevenlabs-signature'] as string
+  const signature = req.headers['elevenlabs-signature'] as string
   if (signature) {
     const payload = JSON.stringify(req.body)
     const { elevenLabsService } = await import('@/services/elevenlabs')
     
-    // SKIP SIGNATURE VALIDATION IN DEBUG MODE
-    logger.info('🔍 Debug mode - skipping signature validation')
+    const isValidSignature = elevenLabsService.validateWebhookSignature(payload, signature)
+    if (!isValidSignature) {
+      throw new AuthenticationError('Invalid webhook signature', { 
+        hasSignature: !!signature,
+        requestId: data.request_id
+      })
+    }
+    
+    logger.info('ElevenLabs webhook signature validated', {
+      requestId: data.request_id
+    })
   }
 }
 
@@ -52,35 +62,64 @@ const handler = compose(
   withMethodValidation(['POST']),
   withValidation(validateElevenLabsWebhook)
 )(async (req, res, context) => {
-  // TEMPORARY DEBUG MODE - Just log and return success
-  logger.info('🔍 ElevenLabs Webhook Handler - DEBUG MODE', {
-    body: req.body,
-    query: req.query,
-    method: req.method,
-    url: req.url
-  })
+  const { type, event_timestamp, data } = req.body
+  
+  // Extract the actual data from ElevenLabs webhook structure
+  const requestId = data?.request_id
+  const transcription = data?.transcription
+  const transcriptionText = transcription?.text || ''
+  const languageCode = transcription?.language_code
 
-  // For now, just return success without processing
-  // This allows us to see what ElevenLabs sends without errors
-
-  logger.businessEvent('elevenlabs-webhook-debug-processed', {
+  logger.businessEvent('elevenlabs-webhook-received', {
     ...context,
-    receivedPayload: req.body,
-    debugMode: true
+    requestId,
+    type,
+    hasTranscription: !!transcriptionText,
+    transcriptionLength: transcriptionText.length,
+    languageCode
   })
+
+  // Process webhook with correct ElevenLabs structure
+  if (requestId && type === 'speech_to_text_transcription') {
+    await transcriptionService.handleElevenLabsWebhook({
+      task_id: requestId, // Map request_id to task_id for our system
+      status: 'completed', // ElevenLabs only sends completed transcriptions
+      result: {
+        text: transcriptionText,
+        language_code: languageCode,
+        words: transcription?.words || []
+      },
+      error: undefined,
+      segmentId: undefined // Will be looked up by task_id
+    })
+
+    logger.businessEvent('elevenlabs-webhook-processed', {
+      ...context,
+      requestId,
+      transcriptionLength: transcriptionText.length,
+      processed: true
+    })
+  } else {
+    logger.warn('Unknown ElevenLabs webhook type or missing data', {
+      type,
+      hasRequestId: !!requestId,
+      receivedData: req.body
+    })
+  }
 
   res.status(200).json({ 
-    message: 'Debug webhook processed successfully',
-    timestamp: new Date().toISOString(),
-    receivedData: req.body
+    message: 'Webhook processed successfully',
+    requestId,
+    type,
+    processed: !!(requestId && type === 'speech_to_text_transcription')
   })
 })
 
 export default withErrorHandling(handler, { 
   operation: 'elevenlabs-webhook',
   extractContext: (req) => ({
-    taskId: req.body?.task_id || req.body?.request_id,
+    taskId: req.body?.data?.request_id,
     segmentId: req.query.segmentId as string,
-    webhookStatus: req.body?.status || 'unknown'
+    webhookStatus: req.body?.type || 'unknown'
   })
 })
