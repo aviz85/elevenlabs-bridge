@@ -6,16 +6,35 @@ import { logger } from '@/lib/logger'
 
 // Webhook validation
 const validateElevenLabsWebhook = async (req: NextApiRequest) => {
-  const { task_id, status } = req.body
+  // Log what ElevenLabs actually sends for debugging
+  logger.info('ElevenLabs webhook payload', {
+    headers: req.headers,
+    body: req.body,
+    bodyKeys: Object.keys(req.body || {}),
+    contentType: req.headers['content-type']
+  })
 
-  if (!task_id || !status) {
-    throw new ValidationError('Missing required fields: task_id, status', {
+  const { task_id, status, request_id } = req.body
+
+  // Accept either task_id or request_id (ElevenLabs might use either)
+  const actualTaskId = task_id || request_id
+  
+  if (!actualTaskId) {
+    throw new ValidationError('Missing required field: task_id or request_id', {
+      received: req.body,
       missing: {
         task_id: !task_id,
-        status: !status
+        request_id: !request_id
       }
     })
   }
+
+  // Status might be optional for some webhook types
+  logger.info('ElevenLabs webhook validation passed', {
+    taskId: actualTaskId,
+    status: status || 'unknown',
+    hasStatus: !!status
+  })
 
   // Validate webhook signature if provided
   const signature = req.headers['x-elevenlabs-signature'] as string
@@ -37,22 +56,26 @@ const handler = compose(
   withMethodValidation(['POST']),
   withValidation(validateElevenLabsWebhook)
 )(async (req, res, context) => {
-  const { task_id, status, result, error } = req.body
+  const { task_id, status, result, error, request_id } = req.body
   const segmentId = req.query.segmentId as string
+  
+  // Use either task_id or request_id
+  const actualTaskId = task_id || request_id
 
   logger.businessEvent('elevenlabs-webhook-received', {
     ...context,
-    taskId: task_id,
-    status,
-    segmentId: segmentId || 'lookup-by-task-id', // Will lookup by elevenlabs_task_id if no segmentId
+    taskId: actualTaskId,
+    status: status || 'unknown',
+    segmentId: segmentId || 'lookup-by-task-id',
     hasResult: !!result,
-    hasError: !!error
+    hasError: !!error,
+    originalPayload: req.body
   })
 
   // Process webhook with enhanced context
   await transcriptionService.handleElevenLabsWebhook({
-    task_id,
-    status,
+    task_id: actualTaskId,
+    status: status || 'completed', // Default to completed if no status
     result,
     error,
     segmentId // Pass segment ID for better tracking
@@ -75,8 +98,8 @@ const handler = compose(
 export default withErrorHandling(handler, { 
   operation: 'elevenlabs-webhook',
   extractContext: (req) => ({
-    taskId: req.body?.task_id,
+    taskId: req.body?.task_id || req.body?.request_id,
     segmentId: req.query.segmentId as string,
-    webhookStatus: req.body?.status
+    webhookStatus: req.body?.status || 'unknown'
   })
 })
