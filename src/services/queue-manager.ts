@@ -419,6 +419,77 @@ export class QueueManager {
   }
 
   /**
+   * Force process queue jobs (for serverless environments where setInterval doesn't work)
+   */
+  async forceProcessQueue(maxJobs: number = 4): Promise<{ processedJobs: number; remainingJobs: number }> {
+    logger.info('Force processing queue', { 
+      totalJobs: this.jobs.size,
+      maxJobs,
+      processingJobs: this.processingJobs.size
+    })
+
+    let processedJobs = 0
+    const availableSlots = maxJobs - this.processingJobs.size
+
+    if (availableSlots <= 0) {
+      logger.info('No available slots for processing', { 
+        maxJobs,
+        currentlyProcessing: this.processingJobs.size
+      })
+      return {
+        processedJobs: 0,
+        remainingJobs: this.jobs.size
+      }
+    }
+
+    // Get pending jobs sorted by priority and scheduled time
+    const pendingJobs = Array.from(this.jobs.values())
+      .filter(job => 
+        job.status === 'pending' && 
+        job.scheduledAt <= new Date()
+      )
+      .sort((a, b) => {
+        if (a.priority !== b.priority) {
+          return b.priority - a.priority // Higher priority first
+        }
+        return a.scheduledAt.getTime() - b.scheduledAt.getTime() // Earlier scheduled first
+      })
+      .slice(0, availableSlots)
+
+    logger.info('Found pending jobs for processing', {
+      pendingJobsCount: pendingJobs.length,
+      availableSlots
+    })
+
+    // Process selected jobs
+    const processingPromises = pendingJobs.map(job => {
+      processedJobs++
+      return this.processJob(job).catch(error => {
+        logger.error('Error processing job in force queue', error as Error, {
+          jobId: job.id,
+          segmentId: job.segmentId
+        })
+      })
+    })
+
+    // Wait for all jobs to start processing (but don't wait for completion)
+    await Promise.allSettled(processingPromises)
+
+    const remainingJobs = Array.from(this.jobs.values())
+      .filter(job => job.status === 'pending').length
+
+    logger.info('Force queue processing completed', {
+      processedJobs,
+      remainingJobs
+    })
+
+    return {
+      processedJobs,
+      remainingJobs
+    }
+  }
+
+  /**
    * Get current configuration
    */
   getConfig(): QueueConfig {
