@@ -562,29 +562,45 @@ export class QueueManager {
       // 🔥 CRITICAL FIX: First, clean up completed/failed jobs from memory
       await this.syncJobsWithDatabase()
       
-      // Get all pending segments from database
-      const { data: pendingSegments, error } = await supabaseAdmin
+      // Get pending segments AND processing segments that might be stuck (older than 5 minutes)
+      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString()
+      
+      // First get pending segments
+      const { data: pendingSegments, error: pendingError } = await supabaseAdmin
         .from('segments')
         .select('*')
         .eq('status', 'pending')
         .order('start_time', { ascending: true })
       
+      // Then get stuck processing segments (older than 5 minutes)
+      const { data: stuckSegments, error: stuckError } = await supabaseAdmin
+        .from('segments')
+        .select('*')
+        .eq('status', 'processing')
+        .lt('updated_at', fiveMinutesAgo)
+        .order('start_time', { ascending: true })
+      
+      const error = pendingError || stuckError
+      const allSegments = [...(pendingSegments || []), ...(stuckSegments || [])]
+      
       if (error) {
-        logger.error('Failed to load pending segments from database', error)
+        logger.error('Failed to load segments from database', error)
         return
       }
       
-      if (!pendingSegments || pendingSegments.length === 0) {
-        logger.info('No pending segments found in database')
+      if (!allSegments || allSegments.length === 0) {
+        logger.info('No pending or stuck segments found in database')
         return
       }
       
-      logger.info('Loading pending segments from database', {
-        segmentCount: pendingSegments.length
+      logger.info('Loading segments from database', {
+        pendingCount: pendingSegments?.length || 0,
+        stuckCount: stuckSegments?.length || 0,
+        totalCount: allSegments.length
       })
       
       // Add segments to queue if not already present
-      for (const segment of pendingSegments) {
+      for (const segment of allSegments) {
         const jobId = `job_${segment.id}_${Date.now()}`
         
         // Check if job already exists
