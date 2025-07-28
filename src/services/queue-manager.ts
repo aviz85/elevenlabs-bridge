@@ -426,6 +426,9 @@ export class QueueManager {
       processingJobs: this.processingJobs.size
     })
 
+    // In serverless environment, reload pending segments from database
+    await this.loadPendingSegmentsFromDatabase()
+
     let processedJobs = 0
     const availableSlots = maxJobs - this.processingJobs.size
 
@@ -484,6 +487,69 @@ export class QueueManager {
     return {
       processedJobs,
       remainingJobs
+    }
+  }
+
+  /**
+   * Load pending segments from database and add them to queue (for serverless environments)
+   */
+  private async loadPendingSegmentsFromDatabase(): Promise<void> {
+    try {
+      // Get all pending segments from database
+      const { supabaseAdmin } = await import('../lib/supabase')
+      
+      const { data: pendingSegments, error } = await supabaseAdmin
+        .from('segments')
+        .select('*')
+        .eq('status', 'pending')
+        .order('start_time', { ascending: true })
+      
+      if (error) {
+        logger.error('Failed to load pending segments from database', error)
+        return
+      }
+      
+      if (!pendingSegments || pendingSegments.length === 0) {
+        logger.info('No pending segments found in database')
+        return
+      }
+      
+      logger.info('Loading pending segments from database', {
+        segmentCount: pendingSegments.length
+      })
+      
+      // Add segments to queue if not already present
+      for (const segment of pendingSegments) {
+        const jobId = `job_${segment.id}_${Date.now()}`
+        
+        // Check if job already exists
+        if (this.jobs.has(jobId)) {
+          continue
+        }
+        
+        const job: QueueJob = {
+          id: jobId,
+          segmentId: segment.id,
+          taskId: segment.task_id,
+          filePath: segment.file_path,
+          priority: 8 - Math.floor(segment.start_time / 900), // Earlier segments have higher priority
+          attempts: 0,
+          maxAttempts: this.config.retryAttempts,
+          createdAt: new Date(segment.created_at),
+          scheduledAt: new Date(),
+          status: 'pending'
+        }
+        
+        this.jobs.set(jobId, job)
+      }
+      
+      logger.info('Loaded pending segments into queue', {
+        totalJobs: this.jobs.size,
+        loadedSegments: pendingSegments.length
+      })
+      
+    } catch (error) {
+      logger.error('Error loading pending segments from database', error as Error)
     }
   }
 
