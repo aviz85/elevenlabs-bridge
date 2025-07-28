@@ -1,0 +1,14 @@
+{
+  "name": "elevenlabs-client-test",
+  "version": "1.0.0",
+  "description": "End-to-end client test for ElevenLabs bridge",
+  "main": "client-server.js",
+  "scripts": {
+    "start": "node client-server.js",
+    "test": "node test-full-pipeline.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "dotenv": "^16.0.3"
+  }
+} 
