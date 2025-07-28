@@ -494,13 +494,75 @@ export class QueueManager {
   }
 
   /**
+   * 🔥 CRITICAL: Sync in-memory jobs with database status to remove completed jobs
+   */
+  private async syncJobsWithDatabase(): Promise<void> {
+    try {
+      const { supabaseAdmin } = await import('../lib/supabase')
+      
+      // Get all segments that should be in processing but are actually completed/failed
+      const processingJobIds = Array.from(this.processingJobs)
+      const jobSegmentIds = processingJobIds.map(jobId => {
+        const job = this.jobs.get(jobId)
+        return job?.segmentId
+      }).filter(Boolean)
+      
+      if (jobSegmentIds.length === 0) return
+      
+      const { data: segments, error } = await supabaseAdmin
+        .from('segments')
+        .select('id, status')
+        .in('id', jobSegmentIds)
+      
+      if (error) {
+        logger.error('Failed to sync jobs with database', error)
+        return
+      }
+      
+      let cleanedJobs = 0
+      
+      // Remove completed/failed jobs from processingJobs set
+      for (const jobId of processingJobIds) {
+        const job = this.jobs.get(jobId)
+        if (!job) continue
+        
+        const segment = segments?.find(s => s.id === job.segmentId)
+        if (segment && (segment.status === 'completed' || segment.status === 'failed')) {
+          this.processingJobs.delete(jobId)
+          job.status = segment.status as 'completed' | 'failed'
+          cleanedJobs++
+          
+          logger.info('Cleaned completed job from processing set', {
+            jobId,
+            segmentId: job.segmentId,
+            status: segment.status
+          })
+        }
+      }
+      
+      if (cleanedJobs > 0) {
+        logger.info('Jobs sync completed', {
+          cleanedJobs,
+          remainingProcessingJobs: this.processingJobs.size
+        })
+      }
+      
+    } catch (error) {
+      logger.error('Failed to sync jobs with database', error as Error)
+    }
+  }
+
+  /**
    * Load pending segments from database and add them to queue (for serverless environments)
    */
   private async loadPendingSegmentsFromDatabase(): Promise<void> {
     try {
-      // Get all pending segments from database
       const { supabaseAdmin } = await import('../lib/supabase')
       
+      // 🔥 CRITICAL FIX: First, clean up completed/failed jobs from memory
+      await this.syncJobsWithDatabase()
+      
+      // Get all pending segments from database
       const { data: pendingSegments, error } = await supabaseAdmin
         .from('segments')
         .select('*')
