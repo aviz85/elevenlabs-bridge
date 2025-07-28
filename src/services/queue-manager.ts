@@ -562,8 +562,8 @@ export class QueueManager {
       // 🔥 CRITICAL FIX: First, clean up completed/failed jobs from memory
       await this.syncJobsWithDatabase()
       
-      // Get pending segments AND processing segments that might be stuck (older than 5 minutes)
-      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString()
+      // Get pending segments AND processing segments that might be stuck (older than 1 minute)
+      const oneMinuteAgo = new Date(Date.now() - 1 * 60 * 1000).toISOString()
       
       // First get pending segments
       const { data: pendingSegments, error: pendingError } = await supabaseAdmin
@@ -577,7 +577,7 @@ export class QueueManager {
         .from('segments')
         .select('*')
         .eq('status', 'processing')
-        .lt('updated_at', fiveMinutesAgo)
+        .lt('updated_at', oneMinuteAgo)
         .order('start_time', { ascending: true })
       
       const error = pendingError || stuckError
