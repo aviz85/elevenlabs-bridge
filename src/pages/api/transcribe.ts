@@ -61,9 +61,19 @@ const handler = compose(
     type: 'audio/mp3'
   } as File
 
+  // ALWAYS USE GOOGLE CLOUD FUNCTIONS - NO MOCK SERVICE
+  const FORCE_GOOGLE_CLOUD_FUNCTIONS = true
+  
+  logger.info('FORCING Google Cloud Functions usage', {
+    filename,
+    fileSize: fileSize || 0,
+    forceGoogle: FORCE_GOOGLE_CLOUD_FUNCTIONS
+  })
+
   const result = await transcriptionService.processTranscriptionRequest({
     file: mockFile,
-    webhookUrl
+    webhookUrl,
+    useRealElevenLabs: FORCE_GOOGLE_CLOUD_FUNCTIONS  // ALWAYS TRUE
   })
 
   logger.businessEvent('transcription-request-processed', {
@@ -82,7 +92,6 @@ const handler = compose(
 export default withErrorHandling(handler, { 
   operation: 'transcribe',
   extractContext: (req) => ({
-    filename: req.body?.filename,
-    fileSize: req.body?.fileSize
+    operation: 'transcribe'
   })
 })

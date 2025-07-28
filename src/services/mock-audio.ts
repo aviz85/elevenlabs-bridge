@@ -18,7 +18,7 @@ export class MockAudioService {
   /**
    * Mock audio conversion - simulates converting any format to MP3
    */
-  async convertToMp3(file: File): Promise<{ buffer: Buffer; filePath: string }> {
+  async convertToMp3(file: File): Promise<{ convertedPath: string; duration: number }> {
     logger.info('Mock: Converting file to MP3', { 
       filename: file.name, 
       size: file.size, 
@@ -28,12 +28,13 @@ export class MockAudioService {
     // Simulate processing time
     await this.delay(1000)
 
-    // Create a mock buffer (in real implementation, this would be the converted audio)
-    const mockBuffer = Buffer.from(`mock-mp3-data-${Date.now()}`)
-    const filePath = `converted/${Date.now()}-${file.name.replace(/\.[^/.]+$/, '')}.mp3`
+    const convertedPath = `converted/${Date.now()}-${file.name.replace(/\.[^/.]+$/, '')}.mp3`
+    
+    // Get mock duration
+    const duration = await this.getAudioDuration(file)
 
-    logger.info('Mock: File converted successfully', { filePath })
-    return { buffer: mockBuffer, filePath }
+    logger.info('Mock: File converted successfully', { convertedPath })
+    return { convertedPath, duration }
   }
 
   /**
@@ -55,6 +56,19 @@ export class MockAudioService {
     })
 
     return estimatedDuration
+  }
+
+  /**
+   * Mock segment creation - creates audio segments for processing
+   */
+  async createSegments(convertedPath: string, duration: number, segmentDuration: number = 900): Promise<AudioSegment[]> {
+    logger.info('Mock: Creating audio segments', { 
+      convertedPath, 
+      duration, 
+      segmentDuration 
+    })
+
+    return this.splitAudio(convertedPath, duration, segmentDuration)
   }
 
   /**

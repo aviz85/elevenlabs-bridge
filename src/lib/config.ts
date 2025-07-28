@@ -14,7 +14,7 @@ export const config = {
   google: {
     functionUrl: process.env.GOOGLE_CLOUD_FUNCTION_URL || 
       'https://us-central1-dreemz-whatsapp-mentor.cloudfunctions.net/splitAudio',
-    useGoogleFunctions: process.env.USE_GOOGLE_CLOUD_FUNCTIONS === 'true'
+    useGoogleFunctions: true  // FORCE GOOGLE CLOUD FUNCTIONS ALWAYS
   },
   
   app: {
