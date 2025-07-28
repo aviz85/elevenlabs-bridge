@@ -365,7 +365,14 @@ export class ElevenLabsService {
       logger.info('Webhook signature validation', { 
         isValid,
         hasSecret: !!secret,
-        signatureProvided: !!signature
+        signatureProvided: !!signature,
+        // DEBUG INFO:
+        timestamp,
+        receivedSignature: signatureValue,
+        expectedSignature,
+        payloadLength: payload.length,
+        payloadToSignLength: payloadToSign.length,
+        originalSignature: signature
       })
 
       return isValid
