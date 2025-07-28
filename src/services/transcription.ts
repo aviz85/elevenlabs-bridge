@@ -34,9 +34,13 @@ export class TranscriptionService {
       })
 
       // Step 2: Process audio file (convert and segment)
+      console.log('DEBUG: useRealElevenLabs =', request.useRealElevenLabs)
+      
       if (request.useRealElevenLabs) {
+        console.log('DEBUG: Using REAL audio processing with Google Cloud Functions')
         await this.processRealAudioFile(task, request.file, request.webhookUrl)
       } else {
+        console.log('DEBUG: Using MOCK audio processing - THIS IS THE PROBLEM!')
         await this.processAudioFile(task, request.file)
       }
 
