@@ -120,4 +120,26 @@ export interface ApiError {
   code: string
   message: string
   details?: any
+  errorId?: string
+  isRetryable?: boolean
+}
+
+// Monitoring and health types
+export interface HealthCheckResult {
+  healthy: boolean
+  timestamp: string
+  checks: Record<string, {
+    healthy: boolean
+    error?: string
+    duration: number
+  }>
+}
+
+export interface CircuitBreakerStats {
+  state: 'CLOSED' | 'OPEN' | 'HALF_OPEN'
+  failureCount: number
+  successCount: number
+  totalRequests: number
+  lastFailureTime?: string
+  nextAttemptTime?: string
 }

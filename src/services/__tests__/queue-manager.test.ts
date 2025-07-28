@@ -188,7 +188,7 @@ describe('QueueManager', () => {
         expect.any(Buffer),
         {
           modelId: 'scribe_v1',
-          webhookUrl: 'https://test.example.com/api/webhook/elevenlabs',
+          webhookUrl: expect.stringContaining('/api/webhook/elevenlabs?segmentId=segment-1'),
           diarize: true,
           tagAudioEvents: true
         }
@@ -484,6 +484,127 @@ describe('QueueManager', () => {
         expect(job?.status).toBe('failed') // Should fail immediately
         expect(job?.attempts).toBe(1)
       }
+    })
+  })
+
+  describe('Webhook Integration', () => {
+    beforeEach(() => {
+      mockDatabaseService.updateSegment.mockResolvedValue({} as any)
+      mockAudioProcessingService.downloadSegment.mockResolvedValue(Buffer.from('audio data'))
+      mockElevenLabsService.transcribeAudio.mockResolvedValue({
+        taskId: 'elevenlabs-task-1'
+      })
+    })
+
+    it('should construct proper webhook URLs with segment tracking', async () => {
+      const jobId = await queueManager.addSegmentToQueue(mockSegment)
+      
+      // Wait for processing
+      await new Promise(resolve => setTimeout(resolve, 200))
+      
+      // Verify webhook URL includes segment ID
+      expect(mockElevenLabsService.transcribeAudio).toHaveBeenCalledWith(
+        expect.any(Buffer),
+        expect.objectContaining({
+          webhookUrl: expect.stringContaining('segmentId=segment-1')
+        })
+      )
+    })
+
+    it('should validate webhook configuration', async () => {
+      // Mock ElevenLabs webhook status
+      mockElevenLabsService.getWebhookStatus = jest.fn().mockResolvedValue({
+        configured: true,
+        url: 'https://test.example.com/api/webhook/elevenlabs'
+      })
+
+      const validation = await queueManager.validateWebhookConfiguration()
+      
+      expect(validation.valid).toBe(true)
+      expect(validation.errors).toHaveLength(0)
+    })
+
+    it('should detect webhook configuration issues', async () => {
+      // Remove webhook base URL
+      delete process.env.WEBHOOK_BASE_URL
+      
+      // Mock ElevenLabs webhook status as not configured
+      mockElevenLabsService.getWebhookStatus = jest.fn().mockResolvedValue({
+        configured: false
+      })
+
+      const validation = await queueManager.validateWebhookConfiguration()
+      
+      expect(validation.valid).toBe(false)
+      expect(validation.errors.length).toBeGreaterThan(0)
+      expect(validation.errors.some(error => 
+        error.includes('WEBHOOK_BASE_URL')
+      )).toBe(true)
+
+      // Restore environment variable
+      process.env.WEBHOOK_BASE_URL = 'https://test.example.com'
+    })
+
+    it('should provide webhook statistics', async () => {
+      // Add some jobs with different statuses
+      const segments = [
+        { ...mockSegment, id: 'segment-1' },
+        { ...mockSegment, id: 'segment-2' },
+        { ...mockSegment, id: 'segment-3' }
+      ]
+
+      // Mock different outcomes
+      mockElevenLabsService.transcribeAudio
+        .mockResolvedValueOnce({ taskId: 'task-1' }) // Success
+        .mockRejectedValueOnce(new Error('Failed')) // Failure
+        .mockResolvedValueOnce({ taskId: 'task-3' }) // Success
+
+      await Promise.all(segments.map(segment => queueManager.addSegmentToQueue(segment)))
+      
+      // Wait for processing
+      await new Promise(resolve => setTimeout(resolve, 300))
+      
+      const stats = queueManager.getWebhookStats()
+      
+      expect(stats.totalWebhooksSent).toBeGreaterThan(0)
+      expect(stats.webhookSuccessRate).toBeGreaterThanOrEqual(0)
+      expect(stats.webhookSuccessRate).toBeLessThanOrEqual(100)
+    })
+
+    it('should handle webhook URL construction with different base URLs', async () => {
+      // Test with localhost
+      process.env.WEBHOOK_BASE_URL = 'http://localhost:3000'
+      
+      const jobId = await queueManager.addSegmentToQueue(mockSegment)
+      
+      // Wait for processing
+      await new Promise(resolve => setTimeout(resolve, 200))
+      
+      expect(mockElevenLabsService.transcribeAudio).toHaveBeenCalledWith(
+        expect.any(Buffer),
+        expect.objectContaining({
+          webhookUrl: 'http://localhost:3000/api/webhook/elevenlabs?segmentId=segment-1'
+        })
+      )
+
+      // Test with production URL
+      process.env.WEBHOOK_BASE_URL = 'https://myapp.vercel.app'
+      
+      const segment2 = { ...mockSegment, id: 'segment-2' }
+      const jobId2 = await queueManager.addSegmentToQueue(segment2)
+      
+      // Wait for processing
+      await new Promise(resolve => setTimeout(resolve, 200))
+      
+      expect(mockElevenLabsService.transcribeAudio).toHaveBeenCalledWith(
+        expect.any(Buffer),
+        expect.objectContaining({
+          webhookUrl: 'https://myapp.vercel.app/api/webhook/elevenlabs?segmentId=segment-2'
+        })
+      )
+
+      // Restore test URL
+      process.env.WEBHOOK_BASE_URL = 'https://test.example.com'
     })
   })
 })

@@ -11,6 +11,12 @@ export const config = {
     serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY!
   },
   
+  google: {
+    functionUrl: process.env.GOOGLE_CLOUD_FUNCTION_URL || 
+      'https://us-central1-dreemz-whatsapp-mentor.cloudfunctions.net/splitAudio',
+    useGoogleFunctions: process.env.USE_GOOGLE_CLOUD_FUNCTIONS === 'true'
+  },
+  
   app: {
     webhookBaseUrl: process.env.WEBHOOK_BASE_URL || 'http://localhost:3000',
     maxConcurrentRequests: parseInt(process.env.MAX_CONCURRENT_REQUESTS || '4'),

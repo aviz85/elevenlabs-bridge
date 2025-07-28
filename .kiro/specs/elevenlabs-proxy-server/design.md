@@ -2,14 +2,17 @@
 
 ## Overview
 
-The ElevenLabs Proxy Server is a Next.js application that provides a robust intermediary service for processing large audio/video files through ElevenLabs' Scribe speech-to-text API. The system addresses the limitations of direct API usage by implementing file chunking, concurrent processing, queue management, and automatic cleanup.
+The ElevenLabs Proxy Server is a production-ready Next.js application deployed on Vercel that provides a robust intermediary service for processing large audio/video files through ElevenLabs' Scribe speech-to-text API. The system addresses the limitations of direct API usage by implementing file chunking, concurrent processing, queue management, comprehensive webhook integration, and automatic cleanup.
 
 Key design principles:
-- **Scalability**: Handle files of any size through intelligent chunking
-- **Reliability**: Implement comprehensive error handling and retry mechanisms  
-- **Efficiency**: Maximize throughput through concurrent processing
-- **Cost Optimization**: Automatic cleanup of temporary resources
-- **Transparency**: Full visibility into processing status and progress
+- **Production Readiness**: Fully deployed on Vercel with proper webhook handling and monitoring
+- **Webhook Integration**: Complete bidirectional webhook communication with ElevenLabs and client servers
+- **Scalability**: Handle files of any size through intelligent chunking within Vercel's constraints
+- **Reliability**: Implement comprehensive error handling, retry mechanisms, and webhook delivery guarantees
+- **Efficiency**: Maximize throughput through concurrent processing and asynchronous webhook handling
+- **Cost Optimization**: Automatic cleanup of temporary resources and efficient Vercel function usage
+- **Security**: Proper webhook signature validation and secure communication protocols
+- **Transparency**: Full visibility into processing status, webhook delivery, and production metrics
 
 ## Architecture
 
@@ -17,20 +20,37 @@ Key design principles:
 
 ```mermaid
 graph TB
-    Client[Client Application] --> API[Next.js API Routes]
+    Client[Client Server] --> |POST /api/transcribe| API[Next.js API on Vercel]
     API --> Queue[Queue Manager]
     API --> DB[(Supabase Database)]
     API --> Storage[(Supabase Storage)]
+    API --> EdgeFunc[Supabase Edge Functions]
     
-    Queue --> EL[ElevenLabs API]
-    EL --> Webhook[Webhook Handler]
-    Webhook --> DB
+    Queue --> |Transcribe Segments| EL[ElevenLabs API]
+    EL --> |Webhook Results| WebhookHandler[/api/webhook/elevenlabs]
+    WebhookHandler --> DB
+    WebhookHandler --> ResultProcessor[Result Assembly]
     
-    Processor[Result Processor] --> DB
-    Processor --> ClientWebhook[Client Webhook]
+    ResultProcessor --> |Complete Transcription| ClientWebhook[Client Server Webhook]
+    ResultProcessor --> DB
     
+    EdgeFunc --> |Audio Processing| Storage
     Cleanup[Cleanup Service] --> Storage
     Cleanup --> DB
+    
+    subgraph "Vercel Deployment"
+        API
+        WebhookHandler
+        Queue
+        ResultProcessor
+        Cleanup
+    end
+    
+    subgraph "Supabase Infrastructure"
+        DB
+        Storage
+        EdgeFunc
+    end
 ```
 
 ### Component Architecture
@@ -302,23 +322,71 @@ interface Segment {
 
 ## Deployment and Configuration
 
-### Environment Variables
+### Vercel Deployment Strategy
+
+The application will be deployed to Vercel with the following configuration:
+
+#### Environment Variables
 ```env
+# ElevenLabs Configuration
 ELEVENLABS_API_KEY=your_api_key_here
+ELEVENLABS_WEBHOOK_SECRET=your_webhook_secret
+
+# Supabase Configuration
 SUPABASE_URL=your_supabase_url
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
-WEBHOOK_BASE_URL=https://your-domain.com
+
+# Application Configuration
+WEBHOOK_BASE_URL=https://your-vercel-app.vercel.app
 MAX_CONCURRENT_REQUESTS=4
 SEGMENT_DURATION_MINUTES=15
 CLEANUP_INTERVAL_HOURS=24
+
+# Webhook Security
+WEBHOOK_SIGNING_SECRET=your_signing_secret
+CLIENT_WEBHOOK_TIMEOUT_MS=30000
+MAX_WEBHOOK_RETRIES=5
+```
+
+#### Vercel Configuration (vercel.json)
+```json
+{
+  "functions": {
+    "src/pages/api/**/*.ts": {
+      "maxDuration": 300
+    }
+  },
+  "env": {
+    "ELEVENLABS_API_KEY": "@elevenlabs-api-key",
+    "SUPABASE_URL": "@supabase-url",
+    "SUPABASE_SERVICE_ROLE_KEY": "@supabase-service-role-key"
+  }
+}
 ```
 
 ### Infrastructure Requirements
-- **Next.js Application**: Deployed on Vercel with Node.js runtime
-- **Supabase Project**: Database and storage configuration
-- **Supabase Edge Functions**: For heavy audio processing tasks (FFmpeg available in Deno runtime)
-- **Queue System**: Background job processing using Vercel's serverless functions
-- **Monitoring**: Logging and error tracking system
+- **Vercel Deployment**: Next.js application with serverless functions
+- **Supabase Project**: Database, storage, and Edge Functions
+- **Domain Configuration**: Custom domain for webhook endpoints
+- **SSL/TLS**: HTTPS enforcement for all webhook communication
+- **Monitoring**: Vercel Analytics and logging integration
+- **Error Tracking**: Integration with error monitoring services
+
+### Webhook Security Implementation
+
+#### ElevenLabs Webhook Validation
+```typescript
+interface WebhookValidator {
+  validateElevenLabsSignature(payload: string, signature: string): boolean
+  validateClientWebhookResponse(response: Response): boolean
+}
+```
+
+#### Client Webhook Security
+- **Request Signing**: HMAC-SHA256 signatures for outgoing webhooks
+- **Retry Strategy**: Exponential backoff with jitter
+- **Timeout Handling**: Configurable timeout with fallback mechanisms
+- **Rate Limiting**: Prevent webhook spam and abuse
 
 ### Audio Processing Strategy for Vercel
 
@@ -331,5 +399,15 @@ Given Vercel's serverless limitations, the audio processing will be handled as f
    - Convert video to MP3 audio
    - Split audio into 15-minute segments
    - Upload segments back to Supabase Storage
-4. **Queue Management**: Next.js API routes manage the transcription queue
-5. **Cleanup**: Edge Functions handle file cleanup after processing
+4. **Queue Management**: Next.js API routes manage the transcription queue with webhook registration
+5. **Webhook Handling**: Receive ElevenLabs results and trigger client notifications
+6. **Cleanup**: Edge Functions handle file cleanup after successful webhook delivery
+
+### Production Webhook Flow
+
+1. **Client Request**: POST to `/api/transcribe` with file and webhook URL
+2. **File Processing**: Audio conversion and segmentation via Edge Functions
+3. **ElevenLabs Integration**: Submit segments with webhook URL pointing to Vercel app
+4. **Result Collection**: Receive webhooks from ElevenLabs at `/api/webhook/elevenlabs`
+5. **Assembly & Delivery**: Combine results and send to client webhook URL
+6. **Cleanup**: Remove temporary files and update task status

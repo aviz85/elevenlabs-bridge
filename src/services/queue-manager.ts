@@ -203,10 +203,13 @@ export class QueueManager {
       // Download segment file from storage
       const segmentBuffer = await audioProcessingService.downloadSegment(job.filePath)
 
-      // Send to ElevenLabs API for transcription
+      // Construct webhook URL for this specific segment
+      const webhookUrl = this.constructWebhookUrl(job.segmentId)
+      
+      // Send to ElevenLabs API for transcription with webhook integration
       const result = await elevenLabsService.transcribeAudio(segmentBuffer, {
         modelId: 'scribe_v1',
-        webhookUrl: `${process.env.WEBHOOK_BASE_URL}/api/webhook/elevenlabs`,
+        webhookUrl,
         diarize: true,
         tagAudioEvents: true
       })
@@ -428,6 +431,87 @@ export class QueueManager {
   updateConfig(newConfig: Partial<QueueConfig>): void {
     this.config = { ...this.config, ...newConfig }
     logger.info('Queue configuration updated', this.config)
+  }
+
+  /**
+   * Construct webhook URL for a specific segment
+   */
+  private constructWebhookUrl(segmentId: string): string {
+    const baseUrl = process.env.WEBHOOK_BASE_URL || 'http://localhost:3000'
+    const webhookPath = '/api/webhook/elevenlabs'
+    
+    // Include segment ID as query parameter for better tracking
+    const webhookUrl = `${baseUrl}${webhookPath}?segmentId=${segmentId}`
+    
+    logger.debug('Constructed webhook URL', { segmentId, webhookUrl })
+    return webhookUrl
+  }
+
+  /**
+   * Validate webhook configuration
+   */
+  async validateWebhookConfiguration(): Promise<{ valid: boolean; errors: string[] }> {
+    const errors: string[] = []
+
+    // Check if webhook base URL is configured
+    if (!process.env.WEBHOOK_BASE_URL) {
+      errors.push('WEBHOOK_BASE_URL environment variable is not configured')
+    } else {
+      try {
+        const url = new URL(process.env.WEBHOOK_BASE_URL)
+        if (url.protocol !== 'https:' && !url.hostname.includes('localhost')) {
+          errors.push('Webhook URL should use HTTPS in production')
+        }
+      } catch {
+        errors.push('Invalid WEBHOOK_BASE_URL format')
+      }
+    }
+
+    // Check ElevenLabs webhook configuration
+    try {
+      const webhookStatus = await elevenLabsService.getWebhookStatus()
+      if (!webhookStatus.configured) {
+        errors.push('ElevenLabs webhook is not configured')
+      }
+    } catch (error) {
+      errors.push(`Failed to check ElevenLabs webhook status: ${(error as Error).message}`)
+    }
+
+    const valid = errors.length === 0
+    
+    logger.info('Webhook configuration validation', { valid, errors })
+    
+    return { valid, errors }
+  }
+
+  /**
+   * Get webhook integration statistics
+   */
+  getWebhookStats(): {
+    totalWebhooksSent: number
+    pendingWebhooks: number
+    failedWebhooks: number
+    webhookSuccessRate: number
+  } {
+    const jobs = Array.from(this.jobs.values())
+    const totalWebhooksSent = jobs.filter(job => 
+      job.status === 'processing' || job.status === 'completed' || job.status === 'failed'
+    ).length
+    
+    const pendingWebhooks = jobs.filter(job => job.status === 'processing').length
+    const failedWebhooks = jobs.filter(job => job.status === 'failed').length
+    const successfulWebhooks = jobs.filter(job => job.status === 'completed').length
+    
+    const webhookSuccessRate = totalWebhooksSent > 0 
+      ? (successfulWebhooks / totalWebhooksSent) * 100 
+      : 0
+
+    return {
+      totalWebhooksSent,
+      pendingWebhooks,
+      failedWebhooks,
+      webhookSuccessRate: Math.round(webhookSuccessRate * 100) / 100
+    }
   }
 }
 

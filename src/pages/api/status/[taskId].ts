@@ -50,7 +50,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     res.status(200).json(response)
 
   } catch (error) {
-    logger.error('Status API error', error as Error, { taskId: req.query.taskId })
+    const taskId = typeof req.query.taskId === 'string' ? req.query.taskId : 'unknown'
+    logger.error('Status API error', error as Error, { taskId })
     return handleApiError(error).json()
   }
 }

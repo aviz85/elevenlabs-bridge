@@ -4,6 +4,8 @@ import { mockElevenLabsService } from './mock-elevenlabs'
 import { elevenLabsService } from './elevenlabs'
 import { audioProcessingService } from './audio-processing'
 import { queueManager } from './queue-manager'
+import { resultAssemblerService } from './result-assembler'
+import { clientWebhookService } from './client-webhook'
 import { Task, Segment, TranscribeRequest, CombinedTranscription } from '@/types'
 import { logger } from '@/lib/logger'
 import { ValidationError, ExternalServiceError } from '@/lib/errors'
@@ -58,14 +60,31 @@ export class TranscriptionService {
       const arrayBuffer = await file.arrayBuffer()
       const fileBuffer = Buffer.from(arrayBuffer)
 
-      // Upload file to Supabase Storage for processing
-      const uploadedPath = await audioProcessingService.uploadFileForProcessing(
-        fileBuffer,
-        file.name,
-        task.id
-      )
+      // Check if we're using Google Cloud Functions and if file is large
+      const useGoogle = process.env.USE_GOOGLE_CLOUD_FUNCTIONS === 'true'
+      const isLargeFile = fileBuffer.length > 50 * 1024 * 1024 // 50MB threshold
+      
+      let uploadedPath: string
 
-      // Process audio using Supabase Edge Function
+      if (useGoogle && isLargeFile) {
+        // For Google Cloud Functions with large files, we'll bypass Supabase Storage
+        // and use the filename as a reference since Google has the file already
+        uploadedPath = `temp/${file.name}`
+        logger.info('Large file detected, bypassing Supabase Storage for Google Cloud Functions', {
+          taskId: task.id,
+          fileSize: fileBuffer.length,
+          filename: file.name
+        })
+      } else {
+        // Upload file to Supabase Storage for processing (normal path)
+        uploadedPath = await audioProcessingService.uploadFileForProcessing(
+          fileBuffer,
+          file.name,
+          task.id
+        )
+      }
+
+      // Process audio using the appropriate service
       const processingResult = await audioProcessingService.processAudio({
         taskId: task.id,
         filePath: uploadedPath,
@@ -213,24 +232,54 @@ export class TranscriptionService {
   }
 
   /**
-   * Handle webhook from ElevenLabs
+   * Handle webhook from ElevenLabs with enhanced tracking
    */
   async handleElevenLabsWebhook(payload: {
     task_id: string
     status: 'completed' | 'failed'
     result?: any
     error?: string
+    segmentId?: string
   }): Promise<void> {
     logger.info('Processing ElevenLabs webhook', { 
       elevenlabsTaskId: payload.task_id,
-      status: payload.status 
+      status: payload.status,
+      segmentId: payload.segmentId,
+      hasResult: !!payload.result
     })
 
     try {
-      // Find segment by ElevenLabs task ID
-      const segment = await databaseService.getSegmentByElevenLabsTaskId(payload.task_id)
+      // Find segment by ElevenLabs task ID or segment ID
+      let segment = null
+      
+      if (payload.segmentId) {
+        // Try to find by segment ID first (more direct)
+        try {
+          segment = await databaseService.getSegment(payload.segmentId)
+          if (segment && segment.elevenlabs_task_id !== payload.task_id) {
+            logger.warn('Segment ID and ElevenLabs task ID mismatch', {
+              segmentId: payload.segmentId,
+              elevenlabsTaskId: payload.task_id,
+              segmentElevenlabsTaskId: segment.elevenlabs_task_id
+            })
+          }
+        } catch (error) {
+          logger.warn('Failed to find segment by segment ID', error as Error, {
+            segmentId: payload.segmentId
+          })
+        }
+      }
+      
+      // Fallback to finding by ElevenLabs task ID
       if (!segment) {
-        logger.warn('Segment not found for ElevenLabs task ID', { elevenlabsTaskId: payload.task_id })
+        segment = await databaseService.getSegmentByElevenLabsTaskId(payload.task_id)
+      }
+      
+      if (!segment) {
+        logger.warn('Segment not found for webhook', { 
+          elevenlabsTaskId: payload.task_id,
+          segmentId: payload.segmentId
+        })
         return
       }
 
@@ -301,69 +350,72 @@ export class TranscriptionService {
    * Assemble final transcription and deliver to client
    */
   private async assembleAndDeliverResult(task: Task, segments: Segment[]): Promise<void> {
+    const startTime = Date.now()
+    
     try {
-      logger.info('Assembling final transcription', { taskId: task.id })
+      logger.info('Assembling final transcription', { taskId: task.id, segmentCount: segments.length })
 
-      // Sort segments by start time
-      const sortedSegments = segments.sort((a, b) => a.start_time - b.start_time)
-      
-      // Combine transcriptions
-      const combinedText = sortedSegments
-        .map(s => s.transcription_text)
-        .filter(Boolean)
-        .join(' ')
+      // Use result assembler service to combine segments
+      const combinedTranscription = await resultAssemblerService.combineSegments(segments)
 
       // Update task with final result
       await databaseService.updateTask(task.id, {
         status: 'completed',
-        final_transcription: combinedText,
+        final_transcription: combinedTranscription.text,
         completed_at: new Date().toISOString()
       })
 
-      // Send webhook to client (mock implementation)
-      await this.sendClientWebhook(task, combinedText)
+      // Send webhook to client with comprehensive retry logic
+      const deliveryTracking = await clientWebhookService.sendWebhookNotification(
+        task,
+        combinedTranscription
+      )
 
-      logger.info('Transcription completed and delivered', { taskId: task.id })
+      const processingTime = Date.now() - startTime
 
-    } catch (error) {
-      logger.error('Failed to assemble and deliver result', error as Error, { taskId: task.id })
-      
-      await databaseService.updateTask(task.id, {
-        status: 'failed',
-        error_message: 'Failed to assemble final result'
-      })
-    }
-  }
-
-  /**
-   * Send webhook to client (mock implementation)
-   */
-  private async sendClientWebhook(task: Task, transcription: string): Promise<void> {
-    try {
-      logger.info('Sending client webhook', { 
+      logger.info('Transcription completed and webhook delivery attempted', {
         taskId: task.id,
-        webhookUrl: task.client_webhook_url 
+        webhookStatus: deliveryTracking.finalStatus,
+        webhookAttempts: deliveryTracking.attempts.length,
+        processingTimeMs: processingTime,
+        transcriptionLength: combinedTranscription.text.length,
+        segmentCount: combinedTranscription.segments.length
       })
 
-      const payload = {
-        taskId: task.id,
-        status: 'completed',
-        transcription,
-        originalFilename: task.original_filename,
-        completedAt: new Date().toISOString()
+      // If webhook delivery failed, log additional details but don't fail the task
+      if (deliveryTracking.finalStatus === 'failed') {
+        logger.warn('Webhook delivery failed but transcription completed successfully', {
+          taskId: task.id,
+          webhookUrl: task.client_webhook_url,
+          finalAttempt: deliveryTracking.attempts[deliveryTracking.attempts.length - 1]
+        })
       }
 
-      // Mock webhook delivery - in real implementation, make HTTP request
-      logger.info('Mock: Client webhook payload', { payload })
-      
-      // Simulate webhook call delay
-      await new Promise(resolve => setTimeout(resolve, 500))
-      
-      logger.info('Client webhook delivered successfully', { taskId: task.id })
-
     } catch (error) {
-      logger.error('Failed to send client webhook', error as Error, { taskId: task.id })
-      // In real implementation, implement retry logic here
+      logger.error('Failed to assemble and deliver result', error as Error, { 
+        taskId: task.id,
+        processingTimeMs: Date.now() - startTime
+      })
+      
+      // Update task as failed and attempt to send failure webhook
+      await databaseService.updateTask(task.id, {
+        status: 'failed',
+        error_message: 'Failed to assemble final result',
+        completed_at: new Date().toISOString()
+      })
+
+      // Attempt to send failure notification
+      try {
+        await clientWebhookService.sendWebhookNotification(
+          task,
+          undefined,
+          'Failed to assemble final transcription result'
+        )
+      } catch (webhookError) {
+        logger.error('Failed to send failure webhook notification', webhookError as Error, {
+          taskId: task.id
+        })
+      }
     }
   }
 

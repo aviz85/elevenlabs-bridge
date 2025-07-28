@@ -1,28 +1,32 @@
-import { ValidationError } from '@/lib/errors'
+import { config } from '@/lib/config'
 
-export const SUPPORTED_AUDIO_FORMATS = [
-  'audio/mpeg',
-  'audio/mp3',
-  'audio/wav',
-  'audio/m4a',
-  'audio/mp4', // M4A files are often detected as audio/mp4
-  'audio/aac',
-  'audio/ogg',
-  'audio/flac'
+export class ValidationError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ValidationError'
+  }
+}
+
+// Audio formats
+export const AUDIO_FORMATS = [
+  'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/m4a', 
+  'audio/mp4', 'audio/aac', 'audio/ogg', 'audio/flac',
+  'audio/webm', 'audio/x-m4a'
 ]
 
-export const SUPPORTED_VIDEO_FORMATS = [
-  'video/mp4',
-  'video/avi',
-  'video/mov',
-  'video/wmv',
-  'video/flv',
-  'video/webm'
+// Video formats (will be converted to audio)
+export const VIDEO_FORMATS = [
+  'video/mp4', 'video/mpeg', 'video/quicktime', 'video/x-msvideo',
+  'video/webm', 'video/3gpp', 'video/x-flv', 'video/x-ms-wmv',
+  'video/mov', 'video/avi', 'video/mkv'
 ]
 
-export const ALL_SUPPORTED_FORMATS = [...SUPPORTED_AUDIO_FORMATS, ...SUPPORTED_VIDEO_FORMATS]
+export const ALL_SUPPORTED_FORMATS = [...AUDIO_FORMATS, ...VIDEO_FORMATS]
 
-export const MAX_FILE_SIZE = 100 * 1024 * 1024 // 100MB
+// Dynamic file size limits based on processing method
+export const MAX_FILE_SIZE_SUPABASE = 50 * 1024 * 1024 // 50MB for Supabase
+export const MAX_FILE_SIZE_GOOGLE = 2 * 1024 * 1024 * 1024 // 2GB for Google Cloud Functions
+export const MAX_FILE_SIZE_VERCEL = 100 * 1024 * 1024 // 100MB for Vercel
 
 export function validateFile(file: File): void {
   if (!file) {
@@ -33,9 +37,16 @@ export function validateFile(file: File): void {
     throw new ValidationError('File is empty')
   }
 
-  if (file.size > MAX_FILE_SIZE) {
+  // Dynamic size limit based on processing method
+  const maxFileSize = config.google.useGoogleFunctions 
+    ? MAX_FILE_SIZE_GOOGLE 
+    : MAX_FILE_SIZE_SUPABASE
+
+  if (file.size > maxFileSize) {
+    const limitMB = maxFileSize / (1024 * 1024)
+    const processingMethod = config.google.useGoogleFunctions ? 'Google Cloud Functions' : 'Supabase'
     throw new ValidationError(
-      `File size exceeds maximum limit of ${MAX_FILE_SIZE / (1024 * 1024)}MB`
+      `File size exceeds maximum limit of ${limitMB}MB for ${processingMethod}`
     )
   }
 
@@ -70,5 +81,20 @@ export function validateTaskId(taskId: string): void {
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
   if (!uuidRegex.test(taskId)) {
     throw new ValidationError('Invalid task ID format')
+  }
+}
+
+export function getFileTypeInfo(filename: string, mimeType: string): { 
+  isVideo: boolean, 
+  isAudio: boolean, 
+  expectedFormat: string 
+} {
+  const isVideo = VIDEO_FORMATS.includes(mimeType)
+  const isAudio = AUDIO_FORMATS.includes(mimeType)
+  
+  return {
+    isVideo,
+    isAudio,
+    expectedFormat: isVideo ? 'mp3' : 'mp3' // Always convert to MP3
   }
 }

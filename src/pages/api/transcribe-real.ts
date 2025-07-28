@@ -1,10 +1,12 @@
 import { NextApiRequest, NextApiResponse } from 'next'
 import { IncomingForm, File } from 'formidable'
-import { promises as fs } from 'fs'
-import { transcriptionService } from '@/services/transcription'
-import { handleApiError } from '@/lib/errors'
+import fs from 'fs/promises'
+import { TranscriptionService } from '@/services/transcription'
+import { validateFile, validateWebhookUrl, getFileTypeInfo, MAX_FILE_SIZE_GOOGLE } from '@/utils/validation'
 import { logger } from '@/lib/logger'
-import { validateFile, validateWebhookUrl } from '@/utils/validation'
+import { withErrorHandling } from '@/lib/middleware'
+
+const LARGE_FILE_THRESHOLD = 50 * 1024 * 1024 // 50MB
 
 export const config = {
   api: {
@@ -23,9 +25,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       contentType: req.headers['content-type']
     })
 
-    // Parse the multipart form data
+    // Parse the multipart form data with increased size limit for Google Cloud Functions
     const form = new IncomingForm({
-      maxFileSize: 100 * 1024 * 1024, // 100MB
+      maxFileSize: MAX_FILE_SIZE_GOOGLE, // 2GB for Google Cloud Functions
       keepExtensions: true,
     })
 
@@ -52,6 +54,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const file = uploadedFile as File
 
+    // Get file type information
+    const fileTypeInfo = getFileTypeInfo(
+      file.originalFilename || 'unknown', 
+      file.mimetype || 'application/octet-stream'
+    )
+
     // Validate file
     const mockFileForValidation = {
       name: file.originalFilename || 'unknown',
@@ -60,6 +68,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     } as globalThis.File
 
     validateFile(mockFileForValidation)
+
+    // Log file information
+    logger.info('File information', {
+      filename: file.originalFilename,
+      size: file.size,
+      mimeType: file.mimetype,
+      isVideo: fileTypeInfo.isVideo,
+      isAudio: fileTypeInfo.isAudio,
+      willConvertTo: fileTypeInfo.expectedFormat
+    })
 
     // Read file buffer
     const fileBuffer = await fs.readFile(file.filepath)
@@ -70,11 +88,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       type: file.mimetype || 'audio/mpeg'
     })
 
-    // Process transcription request
+    // Process transcription
+    const transcriptionService = new TranscriptionService()
+    
     const result = await transcriptionService.processTranscriptionRequest({
       file: properFile,
       webhookUrl,
-      useRealElevenLabs: true // Flag to use real ElevenLabs service
+      useRealElevenLabs: true
     })
 
     logger.info('Real transcription request processed', { taskId: result.taskId })
@@ -87,7 +107,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   } catch (error) {
     logger.error('Real transcribe API error', error as Error)
-    const errorResponse = handleApiError(error)
-    return res.status(errorResponse.status || 500).json(errorResponse.body)
+    res.status(500).json({ 
+      error: 'Failed to process transcription request',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    })
   }
 }

@@ -37,14 +37,15 @@
   - Write integration tests for the transcribe endpoint
   - _Requirements: 1.1, 1.3, 6.3, 6.4, 6.5_
 
-- [ ] 6. Build queue management system
+- [x] 6. Build queue management system with webhook integration
   - Implement queue manager service for concurrent segment processing
   - Create segment queuing and status tracking functionality
-  - Build ElevenLabs API client with authentication and error handling
-  - Implement concurrent processing with configurable limits
+  - Build ElevenLabs API client with webhook URL registration and authentication
+  - Implement concurrent processing with configurable limits for Vercel deployment
   - Add retry logic with exponential backoff for failed requests
-  - Write unit tests for queue management and concurrent processing
-  - _Requirements: 2.1, 2.2, 2.4, 6.1_
+  - Integrate webhook URL configuration for each ElevenLabs request
+  - Write unit tests for queue management and webhook integration
+  - _Requirements: 2.1, 2.2, 2.4, 6.1, 8.4_
 
 - [x] 7. Create ElevenLabs webhook handler
   - Implement `/api/webhook/elevenlabs` POST endpoint
@@ -55,14 +56,15 @@
   - Write tests for webhook processing and validation
   - _Requirements: 3.1, 3.2, 3.3, 3.5_
 
-- [ ] 8. Implement result assembly and client notification system
-  - Create result assembler service to combine segment transcriptions
-  - Build chronological ordering logic for segment results
-  - Implement client webhook notification system
-  - Add retry logic for failed client webhook deliveries
-  - Create task completion status updates
-  - Write integration tests for result assembly workflow
-  - _Requirements: 2.5, 4.1, 4.2, 4.3, 4.4, 4.5_
+- [x] 8. Implement result assembly and client webhook notification system
+  - Create result assembler service to combine segment transcriptions chronologically
+  - Build client webhook notification system with HMAC signature authentication
+  - Implement exponential backoff retry logic for failed client webhook deliveries
+  - Add webhook payload formatting with task ID, transcription, and metadata
+  - Create task completion status updates and webhook delivery tracking
+  - Add webhook timeout handling and error logging for production monitoring
+  - Write integration tests for complete webhook delivery workflow
+  - _Requirements: 2.5, 4.1, 4.2, 4.3, 4.4, 4.5, 4.6_
 
 - [x] 9. Build task status API endpoint
   - Create `/api/status/:taskId` GET endpoint
@@ -73,7 +75,7 @@
   - Write unit tests for status endpoint functionality
   - _Requirements: 7.3, 7.4, 7.5_
 
-- [ ] 10. Implement automatic cleanup service
+- [x] 10. Implement automatic cleanup service
   - Create cleanup service for temporary file management
   - Build scheduled cleanup logic for completed tasks
   - Implement error-based cleanup for failed tasks
@@ -91,11 +93,21 @@
   - Write tests for error handling scenarios
   - _Requirements: 2.4, 3.5, 5.5_
 
-- [ ] 12. Create end-to-end integration tests
-  - Build complete workflow tests from file upload to transcription delivery
-  - Test concurrent processing with multiple files
-  - Validate webhook communication flows
-  - Test cleanup processes and file management
-  - Create performance tests for large file processing
-  - Add security tests for authentication and validation
-  - _Requirements: 1.1, 2.2, 3.1, 4.1, 5.1_
+- [ ] 12. Prepare Vercel deployment configuration
+  - Create vercel.json configuration file with function timeouts and environment variables
+  - Set up environment variable configuration for production deployment
+  - Configure webhook URLs and domain settings for Vercel deployment
+  - Add production logging and monitoring configuration
+  - Create deployment scripts and CI/CD pipeline setup
+  - Write deployment documentation and production setup guide
+  - _Requirements: 8.1, 8.2, 8.3, 8.5_
+
+- [ ] 13. Create end-to-end integration tests and production validation
+  - Build complete workflow tests from file upload to webhook delivery
+  - Test concurrent processing with multiple files on Vercel environment
+  - Validate bidirectional webhook communication flows with ElevenLabs and clients
+  - Test cleanup processes and file management in production environment
+  - Create performance tests for large file processing within Vercel limits
+  - Add security tests for webhook authentication and signature validation
+  - Test production deployment and webhook endpoint accessibility
+  - _Requirements: 1.1, 2.2, 3.1, 4.1, 5.1, 8.6_

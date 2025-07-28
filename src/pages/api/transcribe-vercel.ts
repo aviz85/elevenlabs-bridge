@@ -144,7 +144,7 @@ async function processAudioAsync(
     const duration = await vercelAudioProcessingService.getAudioDuration(audioBuffer, filename)
     
     // Split into segments (logical splitting for Vercel)
-    const segments = await vercelAudioProcessingService.splitAudioByTime(duration, 900) // 15 minutes
+    const segments = await vercelAudioProcessingService.splitAudioByTime(audioBuffer, 900) // 15 minutes
 
     // Update task with segments
     task.totalSegments = segments.length
@@ -232,7 +232,7 @@ async function processAudioAsync(
       task.status = 'failed'
       task.error = `${failedSegments.length} segments failed to process`
       
-      logger.error('Task completed with errors', { 
+      logger.error('Task completed with errors', new Error('Some segments failed'), { 
         taskId,
         failedCount: failedSegments.length
       })

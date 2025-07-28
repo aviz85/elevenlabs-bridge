@@ -1,41 +1,82 @@
 import { NextApiRequest, NextApiResponse } from 'next'
 import { transcriptionService } from '@/services/transcription'
-import { handleApiError } from '@/lib/errors'
+import { withErrorHandling, withMethodValidation, withValidation, compose } from '@/lib/middleware'
+import { ValidationError, AuthenticationError } from '@/lib/errors'
 import { logger } from '@/lib/logger'
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' })
-  }
+// Webhook validation
+const validateElevenLabsWebhook = async (req: NextApiRequest) => {
+  const { task_id, status } = req.body
 
-  try {
-    logger.info('ElevenLabs webhook received', { 
-      body: req.body,
-      headers: {
-        'content-type': req.headers['content-type'],
-        'user-agent': req.headers['user-agent']
+  if (!task_id || !status) {
+    throw new ValidationError('Missing required fields: task_id, status', {
+      missing: {
+        task_id: !task_id,
+        status: !status
       }
     })
+  }
 
-    const { task_id, status, result, error } = req.body
-
-    if (!task_id || !status) {
-      return res.status(400).json({ error: 'Missing required fields: task_id, status' })
+  // Validate webhook signature if provided
+  const signature = req.headers['x-elevenlabs-signature'] as string
+  if (signature) {
+    const payload = JSON.stringify(req.body)
+    const { elevenLabsService } = await import('@/services/elevenlabs')
+    
+    const isValidSignature = elevenLabsService.validateWebhookSignature(payload, signature)
+    if (!isValidSignature) {
+      throw new AuthenticationError('Invalid webhook signature', { 
+        hasSignature: !!signature,
+        taskId: task_id
+      })
     }
-
-    await transcriptionService.handleElevenLabsWebhook({
-      task_id,
-      status,
-      result,
-      error
-    })
-
-    logger.info('ElevenLabs webhook processed', { task_id, status })
-
-    res.status(200).json({ message: 'Webhook processed successfully' })
-
-  } catch (error) {
-    logger.error('ElevenLabs webhook error', error as Error)
-    return handleApiError(error).json()
   }
 }
+
+const handler = compose(
+  withMethodValidation(['POST']),
+  withValidation(validateElevenLabsWebhook)
+)(async (req, res, context) => {
+  const { task_id, status, result, error } = req.body
+  const segmentId = req.query.segmentId as string
+
+  logger.businessEvent('elevenlabs-webhook-received', {
+    ...context,
+    taskId: task_id,
+    status,
+    segmentId,
+    hasResult: !!result,
+    hasError: !!error
+  })
+
+  // Process webhook with enhanced context
+  await transcriptionService.handleElevenLabsWebhook({
+    task_id,
+    status,
+    result,
+    error,
+    segmentId // Pass segment ID for better tracking
+  })
+
+  logger.businessEvent('elevenlabs-webhook-processed', {
+    ...context,
+    taskId: task_id,
+    status,
+    segmentId
+  })
+
+  res.status(200).json({ 
+    message: 'Webhook processed successfully',
+    taskId: task_id,
+    segmentId
+  })
+})
+
+export default withErrorHandling(handler, { 
+  operation: 'elevenlabs-webhook',
+  extractContext: (req) => ({
+    taskId: req.body?.task_id,
+    segmentId: req.query.segmentId as string,
+    webhookStatus: req.body?.status
+  })
+})

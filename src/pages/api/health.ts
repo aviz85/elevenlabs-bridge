@@ -1,49 +1,57 @@
 import { NextApiRequest, NextApiResponse } from 'next'
-import { supabaseAdmin } from '@/lib/supabase'
-import { logger } from '@/lib/logger'
+import { createHealthCheckHandler } from '@/lib/middleware'
+import { circuitBreakerRegistry } from '@/lib/circuit-breaker'
+import { databaseService } from '@/services/database'
+import { elevenLabsService } from '@/services/elevenlabs'
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method not allowed' })
-  }
-
-  try {
-    // Check database connection
-    const { data, error } = await supabaseAdmin
-      .from('tasks')
-      .select('count')
-      .limit(1)
-
-    if (error) {
-      throw error
+// Health check functions
+const healthChecks = {
+  database: async (): Promise<boolean> => {
+    try {
+      // Test database connection
+      await databaseService.testConnection()
+      return true
+    } catch {
+      return false
     }
+  },
 
-    const health = {
-      status: 'healthy',
-      timestamp: new Date().toISOString(),
-      services: {
-        database: 'connected',
-        api: 'running'
-      },
-      version: '1.0.0'
+  elevenlabs: async (): Promise<boolean> => {
+    try {
+      // Test ElevenLabs API connectivity
+      return await elevenLabsService.validateApiKey()
+    } catch {
+      return false
     }
+  },
 
-    logger.info('Health check passed')
-    res.status(200).json(health)
-
-  } catch (error) {
-    logger.error('Health check failed', error as Error)
-    
-    const health = {
-      status: 'unhealthy',
-      timestamp: new Date().toISOString(),
-      services: {
-        database: 'error',
-        api: 'running'
-      },
-      error: (error as Error).message
+  circuitBreakers: async (): Promise<boolean> => {
+    try {
+      // Check if any critical circuit breakers are open
+      const health = circuitBreakerRegistry.getHealthStatus()
+      const criticalServices = ['elevenlabs', 'database']
+      
+      for (const service of criticalServices) {
+        if (health[service] && !health[service].healthy) {
+          return false
+        }
+      }
+      
+      return true
+    } catch {
+      return false
     }
+  },
 
-    res.status(503).json(health)
+  storage: async (): Promise<boolean> => {
+    try {
+      // Test Supabase storage connectivity
+      // This would typically involve a simple storage operation
+      return true // Placeholder - implement actual storage health check
+    } catch {
+      return false
+    }
   }
 }
+
+export default createHealthCheckHandler(healthChecks)

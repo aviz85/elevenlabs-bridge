@@ -162,6 +162,43 @@ Internal webhook endpoint for ElevenLabs notifications.
 | `MAX_CONCURRENT_REQUESTS` | Max parallel requests (default: 4) | No |
 | `SEGMENT_DURATION_MINUTES` | Segment length (default: 15) | No |
 | `CLEANUP_INTERVAL_HOURS` | Cleanup frequency (default: 24) | No |
+| `USE_GOOGLE_CLOUD_FUNCTIONS` | Use Google instead of Supabase (default: false) | No |
+| `GOOGLE_CLOUD_FUNCTION_URL` | Google Cloud Function URL | No* |
+
+*Required only if `USE_GOOGLE_CLOUD_FUNCTIONS=true`
+
+## Audio Processing Options
+
+The system supports two audio processing backends:
+
+### Option 1: Supabase Edge Functions (Default)
+- **Pros**: Integrated with existing database and storage
+- **Cons**: Limited to Supabase ecosystem
+- **Setup**: Works out of the box
+
+### Option 2: Google Cloud Functions
+- **Pros**: More powerful, cheaper for high volume, better FFmpeg support
+- **Cons**: Requires Google Cloud setup
+- **Setup**: Set `USE_GOOGLE_CLOUD_FUNCTIONS=true`
+
+### Switching to Google Cloud Functions
+
+1. **Deploy the Google Cloud Function:**
+   ```bash
+   cd google-audio-splitter
+   npm run deploy
+   ```
+
+2. **Update environment variables:**
+   ```bash
+   USE_GOOGLE_CLOUD_FUNCTIONS=true
+   GOOGLE_CLOUD_FUNCTION_URL=https://your-region-your-project.cloudfunctions.net/splitAudio
+   ```
+
+3. **Test the integration:**
+   ```bash
+   node test-real-google-function.js
+   ```
 
 ## Development
 

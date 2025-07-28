@@ -2,7 +2,7 @@
 
 ## Introduction
 
-This feature involves creating a Next.js API proxy server that acts as an intermediary for ElevenLabs' Scribe speech-to-text service. The server will handle large audio/video files by automatically splitting them into 15-minute chunks, processing them concurrently through a queue management system, and reassembling the transcription results. The system will use Supabase for database management and temporary file storage, with webhook-based communication for asynchronous processing.
+This feature involves creating a production-ready Next.js API proxy server deployed on Vercel that acts as an intermediary for ElevenLabs' Scribe speech-to-text service. The server will handle large audio/video files by automatically splitting them into 15-minute chunks, processing them concurrently through a queue management system, and reassembling the transcription results. The system will use Supabase for database management and temporary file storage, with comprehensive webhook-based communication for asynchronous processing. The application will be fully deployed to Vercel with proper webhook integration that receives results from ElevenLabs and sends completed transcriptions back to the calling server via webhook.
 
 ## Requirements
 
@@ -44,15 +44,16 @@ This feature involves creating a Next.js API proxy server that acts as an interm
 
 ### Requirement 4
 
-**User Story:** As the proxy server, I want to send completed transcriptions back to the client, so that the requesting application can receive the final results.
+**User Story:** As the proxy server deployed on Vercel, I want to send completed transcriptions back to the calling server via webhook, so that the requesting application can receive the final results asynchronously.
 
 #### Acceptance Criteria
 
-1. WHEN all segments are transcribed and assembled THEN the system SHALL send a webhook to the client's specified URL
-2. WHEN sending client webhook THEN the system SHALL include the complete transcription text and metadata
-3. WHEN client webhook is sent THEN the system SHALL include the original task ID for correlation
-4. IF client webhook fails THEN the system SHALL implement retry logic with configurable attempts
-5. WHEN transcription is delivered THEN the system SHALL mark the task as completed
+1. WHEN all segments are transcribed and assembled THEN the system SHALL send a POST webhook to the client's specified callback URL
+2. WHEN sending client webhook THEN the system SHALL include the complete transcription text, original task ID, processing metadata, and status
+3. WHEN client webhook is sent THEN the system SHALL include proper authentication headers and request signatures for security
+4. IF client webhook fails THEN the system SHALL implement exponential backoff retry logic with up to 5 configurable attempts
+5. WHEN transcription is successfully delivered THEN the system SHALL mark the task as completed and log the delivery
+6. WHEN webhook delivery fails permanently THEN the system SHALL mark the task as failed and preserve the transcription data for manual retrieval
 
 ### Requirement 5
 
@@ -80,12 +81,25 @@ This feature involves creating a Next.js API proxy server that acts as an interm
 
 ### Requirement 7
 
-**User Story:** As the proxy server, I want to track task progress and status, so that I can provide visibility into processing stages and handle errors appropriately.
+**User Story:** As the proxy server deployed on Vercel, I want to track task progress and status with full webhook integration, so that I can provide visibility into processing stages and handle errors appropriately.
 
 #### Acceptance Criteria
 
-1. WHEN a task is created THEN the system SHALL store initial status as "processing"
-2. WHEN segments are queued THEN the system SHALL track individual segment status
-3. WHEN segments complete THEN the system SHALL update progress indicators
-4. WHEN errors occur THEN the system SHALL log detailed error information with task context
-5. WHEN tasks complete THEN the system SHALL update final status and completion timestamp
+1. WHEN a task is created THEN the system SHALL store initial status as "processing" with webhook URL validation
+2. WHEN segments are queued THEN the system SHALL track individual segment status and ElevenLabs webhook registration
+3. WHEN segments complete via ElevenLabs webhook THEN the system SHALL update progress indicators and check for task completion
+4. WHEN errors occur THEN the system SHALL log detailed error information with task context and webhook delivery status
+5. WHEN tasks complete THEN the system SHALL update final status, completion timestamp, and trigger client webhook delivery
+
+### Requirement 8
+
+**User Story:** As a system administrator, I want the application to be production-ready on Vercel, so that it can handle real-world traffic and webhook processing reliably.
+
+#### Acceptance Criteria
+
+1. WHEN deploying to Vercel THEN the system SHALL configure proper environment variables and secrets management
+2. WHEN handling webhooks THEN the system SHALL validate request signatures and implement proper security measures
+3. WHEN processing files THEN the system SHALL respect Vercel's serverless function limitations and timeouts
+4. WHEN managing concurrent requests THEN the system SHALL implement proper rate limiting and queue management
+5. WHEN errors occur THEN the system SHALL provide comprehensive logging and monitoring for production debugging
+6. WHEN webhooks are received THEN the system SHALL respond within Vercel's timeout limits and handle processing asynchronously

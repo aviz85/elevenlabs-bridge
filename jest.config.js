@@ -26,7 +26,7 @@ const customJestConfig = {
   moduleDirectories: ['node_modules', '<rootDir>/'],
   testTimeout: 10000,
   transformIgnorePatterns: [
-    'node_modules/(?!(isows|@supabase)/)'
+    'node_modules/(?!(isows|@supabase|node-fetch)/)'
   ],
 }
 

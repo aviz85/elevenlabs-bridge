@@ -3,6 +3,9 @@
 /.pnp
 .pnp.js
 
+# Google Cloud Functions
+google-audio-splitter/node_modules/
+
 # Testing
 /coverage
 
@@ -38,6 +41,7 @@ next-env.d.ts
 .idea/
 .cursor/
 .swc/
+.kiro/
 
 # Logs
 logs
@@ -54,3 +58,4 @@ tmp/
 temp/
 
 test_input/
+downloaded-segments/

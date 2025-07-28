@@ -138,6 +138,28 @@ export class DatabaseService {
     }
   }
 
+  async getSegment(segmentId: string): Promise<Segment | null> {
+    try {
+      const { data: segment, error } = await supabaseAdmin
+        .from('segments')
+        .select('*')
+        .eq('id', segmentId)
+        .single()
+
+      if (error) {
+        if (error.code === 'PGRST116') {
+          return null // Segment not found
+        }
+        throw new DatabaseError(`Failed to get segment: ${error.message}`)
+      }
+
+      return segment
+    } catch (error) {
+      logger.error('Failed to get segment', error as Error, { segmentId })
+      throw error
+    }
+  }
+
   async getSegmentByElevenLabsTaskId(elevenlabsTaskId: string): Promise<Segment | null> {
     try {
       const { data: segment, error } = await supabaseAdmin
