@@ -81,8 +81,26 @@ export class ElevenLabsService {
         const result = await response.json()
         const duration = Date.now() - startTime
         
+        // DETAILED LOGGING: Log the exact response from ElevenLabs
+        logger.info('ElevenLabs API Response', {
+          responseKeys: Object.keys(result),
+          hasTaskId: !!result.task_id,
+          taskIdValue: result.task_id,
+          fullResponse: result,
+          webhookMode: !!options.webhookUrl
+        })
+        
         if (options.webhookUrl) {
           // Async processing - return task ID
+          if (!result.task_id) {
+            logger.error('ElevenLabs API returned success but no task_id', new Error('Missing task_id'), {
+              response: result,
+              expectedTaskId: true,
+              webhookUrl: options.webhookUrl
+            })
+            throw new Error(`ElevenLabs API returned success but no task_id. Response: ${JSON.stringify(result)}`)
+          }
+          
           logger.externalService('ElevenLabs', 'transcribe-async', true, duration, { 
             taskId: result.task_id,
             webhookUrl: options.webhookUrl
