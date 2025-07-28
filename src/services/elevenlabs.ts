@@ -330,15 +330,37 @@ export class ElevenLabsService {
         return !secret // Return true only if no secret is configured
       }
 
-      // In production, implement proper HMAC signature validation
-      // This is a simplified version for demonstration
+      // ElevenLabs sends signature in format: t=timestamp,v0=signature
+      // Parse the signature components
       const crypto = require('crypto')
+      
+      let timestamp: string | null = null
+      let signatureValue: string | null = null
+      
+      // Parse signature format: "t=1234567890,v0=abcdef..."
+      const parts = signature.split(',')
+      for (const part of parts) {
+        const [key, value] = part.trim().split('=')
+        if (key === 't') {
+          timestamp = value
+        } else if (key === 'v0') {
+          signatureValue = value
+        }
+      }
+      
+      if (!timestamp || !signatureValue) {
+        logger.warn('Invalid signature format', { signature })
+        return false
+      }
+      
+      // Create the payload that ElevenLabs signs: timestamp + payload
+      const payloadToSign = timestamp + payload
       const expectedSignature = crypto
         .createHmac('sha256', secret)
-        .update(payload)
+        .update(payloadToSign)
         .digest('hex')
 
-      const isValid = signature === expectedSignature
+      const isValid = signatureValue === expectedSignature
       
       logger.info('Webhook signature validation', { 
         isValid,

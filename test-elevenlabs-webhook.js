@@ -4,6 +4,29 @@ const https = require('https')
 const fs = require('fs')
 const FormData = require('form-data')
 
+// Load environment variables from .env.local
+function loadEnvFile() {
+  try {
+    const envFile = fs.readFileSync('.env.local', 'utf8')
+    const lines = envFile.split('\n')
+    
+    lines.forEach(line => {
+      const trimmed = line.trim()
+      if (trimmed && !trimmed.startsWith('#') && trimmed.includes('=')) {
+        const [key, ...valueParts] = trimmed.split('=')
+        const value = valueParts.join('=').trim()
+        process.env[key.trim()] = value
+      }
+    })
+    console.log('✅ טעינת משתני סביבה מ-.env.local')
+  } catch (error) {
+    console.log('⚠️ לא נמצא קובץ .env.local')
+  }
+}
+
+// Load environment variables
+loadEnvFile()
+
 console.log('🧪 בדיקת ElevenLabs Webhook ישירה')
 console.log('=' .repeat(50))
 

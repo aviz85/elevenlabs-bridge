@@ -111,12 +111,13 @@ async function checkTaskStatus(taskId) {
       const response = await makeRequest(`${API_BASE}/api/status/${taskId}`)
       
       if (response.statusCode === 200) {
-        const task = response.data.task
+        const task = response.data
         const segments = response.data.segments || []
         
         console.log(`📊 Status Check #${attempts + 1}:`)
         console.log(`   📋 Task Status: ${task.status}`)
         console.log(`   🧩 Segments: ${segments.length}`)
+        console.log(`   📈 Progress: ${task.progress?.completedSegments || 0}/${task.progress?.totalSegments || 0} (${task.progress?.percentage || 0}%)`)
         
         if (segments.length > 0) {
           const segmentStatus = {}
@@ -128,10 +129,10 @@ async function checkTaskStatus(taskId) {
         
         if (task.status === 'completed') {
           console.log('✅ Task completed successfully!')
-          console.log(`📝 Final transcription: "${task.result?.text || 'No text'}"`)
+          console.log(`📝 Final transcription: "${task.finalTranscription || 'No text'}"`)
           return { task, segments }
         } else if (task.status === 'failed') {
-          console.error('❌ Task failed:', task.error_message)
+          console.error('❌ Task failed:', task.error)
           return null
         }
         
@@ -168,7 +169,10 @@ async function triggerQueueProcessing() {
     console.log(`📊 Queue Processing Status: ${response.statusCode}`)
     if (response.statusCode === 200) {
       console.log('✅ Queue processing triggered')
-      console.log(`⚙️ Processed: ${response.data.processed} jobs`)
+      console.log(`⚙️ Processed: ${response.data.processed || 0} jobs`)
+      if (response.data.message) {
+        console.log(`📄 Message: ${response.data.message}`)
+      }
     } else {
       console.log('⚠️ Queue processing response:', response.data)
     }
@@ -203,9 +207,9 @@ async function runFullTest() {
   if (result) {
     console.log('\n🎉 SUCCESS! Hebrew transcription completed!')
     console.log('=' .repeat(50))
-    console.log(`📝 Transcription: "${result.task.result?.text || 'No text'}"`)
+    console.log(`📝 Transcription: "${result.task.finalTranscription || 'No text'}"`)
     console.log(`🧩 Total segments: ${result.segments.length}`)
-    console.log(`⏱️ Processing time: ${result.task.updated_at}`)
+    console.log(`⏱️ Processing time: ${result.task.completedAt}`)
   } else {
     console.log('\n💥 FAILED! Transcription did not complete successfully')
   }
