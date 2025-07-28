@@ -91,21 +91,23 @@ export class ElevenLabsService {
         })
         
         if (options.webhookUrl) {
-          // Async processing - return task ID
-          if (!result.task_id) {
-            logger.error('ElevenLabs API returned success but no task_id', new Error('Missing task_id'), {
+          // Async processing - return task ID (ElevenLabs may return request_id or task_id)
+          const taskId = result.task_id || result.request_id
+          if (!taskId) {
+            logger.error('ElevenLabs API returned success but no task_id or request_id', new Error('Missing task_id/request_id'), {
               response: result,
               expectedTaskId: true,
               webhookUrl: options.webhookUrl
             })
-            throw new Error(`ElevenLabs API returned success but no task_id. Response: ${JSON.stringify(result)}`)
+            throw new Error(`ElevenLabs API returned success but no task_id or request_id. Response: ${JSON.stringify(result)}`)
           }
           
           logger.externalService('ElevenLabs', 'transcribe-async', true, duration, { 
-            taskId: result.task_id,
-            webhookUrl: options.webhookUrl
+            taskId: taskId,
+            webhookUrl: options.webhookUrl,
+            responseType: result.task_id ? 'task_id' : 'request_id'
           })
-          return { taskId: result.task_id }
+          return { taskId: taskId }
         } else {
           // Sync processing - return result immediately
           logger.externalService('ElevenLabs', 'transcribe-sync', true, duration, { 
