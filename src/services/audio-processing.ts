@@ -43,7 +43,7 @@ export class AudioProcessingService {
     // Google Cloud Functions support
     this.googleFunctionUrl = process.env.GOOGLE_CLOUD_FUNCTION_URL || 
       'https://us-central1-dreemz-whatsapp-mentor.cloudfunctions.net/splitAudio'
-    this.useGoogle = process.env.USE_GOOGLE_CLOUD_FUNCTIONS === 'true'
+    this.useGoogle = true  // FORCE GOOGLE CLOUD FUNCTIONS ALWAYS
   }
 
   /**
