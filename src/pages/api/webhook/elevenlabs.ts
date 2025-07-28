@@ -38,7 +38,7 @@ const validateElevenLabsWebhook = async (req: NextApiRequest) => {
     hasTranscription: !!(data.transcription?.text)
   })
 
-  // Validate webhook signature if provided
+  // Validate webhook signature if provided  
   const signature = req.headers['elevenlabs-signature'] as string
   if (signature) {
     const payload = JSON.stringify(req.body)

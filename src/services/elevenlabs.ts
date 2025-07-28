@@ -353,8 +353,8 @@ export class ElevenLabsService {
         return false
       }
       
-      // Create the payload that ElevenLabs signs: timestamp + payload
-      const payloadToSign = timestamp + payload
+      // ElevenLabs signs: timestamp.request_body (with dot separator)
+      const payloadToSign = `${timestamp}.${payload}`
       const expectedSignature = crypto
         .createHmac('sha256', secret)
         .update(payloadToSign)
