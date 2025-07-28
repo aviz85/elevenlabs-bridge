@@ -1,12 +1,21 @@
 {
   "functions": {
-    "src/pages/api/**/*.ts": {
+    "src/pages/api/transcribe.ts": {
       "maxDuration": 300
     },
-    "src/pages/api/transcribe-real.ts": {
+    "src/pages/api/transcribe-vercel.ts": {
       "maxDuration": 300
+    },
+    "src/pages/api/process-queue.ts": {
+      "maxDuration": 60
     }
   },
+  "crons": [
+    {
+      "path": "/api/process-queue",
+      "schedule": "*/2 * * * *"
+    }
+  ],
   "regions": ["iad1"],
   "rewrites": [
     {

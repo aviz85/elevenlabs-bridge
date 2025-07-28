@@ -130,12 +130,25 @@ export class TranscriptionService {
 
       // Get segments from database and add to queue for processing
       const segments = await databaseService.getSegmentsByTaskId(task.id)
-      await queueManager.addSegmentsToQueue(segments, task.id)
-      
-      logger.info('Segments added to processing queue', {
-        taskId: task.id,
-        segmentCount: segments.length
-      })
+              await queueManager.addSegmentsToQueue(segments, task.id)
+
+      // ✅ AUTOMATIC QUEUE PROCESSING - NO MANUAL TRIGGER NEEDED!
+      // Trigger queue processing immediately after adding segments
+      setTimeout(async () => {
+        try {
+          logger.info('Auto-triggering queue processing after segment creation', {
+            taskId: task.id,
+            segmentCount: segments.length
+          })
+          await queueManager.forceProcessQueue()
+        } catch (error) {
+          logger.error('Auto queue processing failed', error as Error, {
+            taskId: task.id
+          })
+        }
+      }, 1000) // Wait 1 second for segments to be fully created
+
+      logger.info('Transcription request processed successfully', { taskId: task.id })
 
     } catch (error) {
       logger.error('Failed to process real audio file', error as Error, { taskId: task.id })

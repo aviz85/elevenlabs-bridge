@@ -1,46 +1,53 @@
 import { NextApiRequest, NextApiResponse } from 'next'
-import { withErrorHandling } from '../../lib/middleware'
-import { logger } from '../../lib/logger'
-import { queueManager } from '../../services/queue-manager'
+import { queueManager } from '@/services/queue-manager'
+import { withErrorHandling, withMethodValidation, compose } from '@/lib/middleware'
+import { logger } from '@/lib/logger'
 
-async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' })
-  }
+const handler = compose(
+  withMethodValidation(['POST', 'GET']) // Allow both POST and GET for cron jobs
+)(async (req, res, context) => {
+  logger.info('Queue processing triggered', {
+    method: req.method,
+    userAgent: req.headers['user-agent'],
+    isCron: req.headers['user-agent']?.includes('vercel-cron')
+  })
 
-  const { taskId, maxJobs = 4 } = req.body
+  const result = await queueManager.forceProcessQueue()
+  
+  logger.info('Queue processing completed', {
+    processedJobs: result.processedJobs,
+    remainingJobs: result.remainingJobs
+  })
 
-  logger.info('Manual queue processing triggered', { taskId, maxJobs })
-
-  try {
-    // Force process queue jobs
-    const result = await queueManager.forceProcessQueue(maxJobs)
+  // 🚀 AUTO-TRIGGER ADDITIONAL PROCESSING IF NEEDED
+  if (result.remainingJobs > 0) {
+    logger.info('Jobs remaining - scheduling additional processing', {
+      remainingJobs: result.remainingJobs
+    })
     
-    logger.info('Queue processing completed', { 
-      processedJobs: result.processedJobs,
-      remainingJobs: result.remainingJobs
-    })
-
-    return res.status(200).json({
-      success: true,
-      message: 'Queue processing triggered successfully',
-      processedJobs: result.processedJobs,
-      remainingJobs: result.remainingJobs
-    })
-  } catch (error) {
-    logger.error('Queue processing failed', error as Error)
-    return res.status(500).json({
-      success: false,
-      error: 'Queue processing failed',
-      message: (error as Error).message
-    })
+    // Trigger another round in 30 seconds if there are remaining jobs
+    setTimeout(async () => {
+      try {
+        logger.info('Auto-retry processing remaining jobs')
+        await queueManager.forceProcessQueue()
+      } catch (error) {
+        logger.error('Auto-retry queue processing failed', error as Error)
+      }
+    }, 30000)
   }
-}
 
-export default withErrorHandling(handler, {
+  res.status(200).json({
+    success: true,
+    message: 'Queue processing triggered successfully',
+    processedJobs: result.processedJobs,
+    remainingJobs: result.remainingJobs,
+    autoRetryScheduled: result.remainingJobs > 0
+  })
+})
+
+export default withErrorHandling(handler, { 
   operation: 'process-queue',
   extractContext: (req) => ({
-    operation: 'process-queue',
-    taskId: req.body?.taskId
+    operation: 'process-queue'
   })
 }) 
