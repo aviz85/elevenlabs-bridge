@@ -37,4 +37,4 @@ for (const envVar of requiredEnvVars) {
   if (!process.env[envVar]) {
     throw new Error(`Missing required environment variable: ${envVar}`)
   }
-}
+}// Force redeploy after environment variables update - Mon Jul 28 10:23:17 IDT 2025
