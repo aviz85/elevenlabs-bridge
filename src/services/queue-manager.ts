@@ -48,7 +48,7 @@ export class QueueManager {
 
   constructor(config?: Partial<QueueConfig>) {
     this.config = {
-      maxConcurrentJobs: 4,
+      maxConcurrentJobs: 8,  // ✅ Increase from 4 to 8 for faster processing
       retryAttempts: 3,
       retryDelayMs: 1000,
       retryBackoffMultiplier: 2,
@@ -380,7 +380,7 @@ export class QueueManager {
     const cutoffTime = new Date(Date.now() - olderThanMs)
     let removedCount = 0
 
-    for (const [jobId, job] of this.jobs.entries()) {
+    for (const [jobId, job] of Array.from(this.jobs.entries())) {
       if (
         (job.status === 'completed' || job.status === 'failed') &&
         job.createdAt < cutoffTime
@@ -428,6 +428,9 @@ export class QueueManager {
 
     // In serverless environment, reload pending segments from database
     await this.loadPendingSegmentsFromDatabase()
+
+    // 🧹 CLEANUP: Remove old completed/failed jobs to prevent memory bloat
+    this.cleanupOldJobs(5 * 60 * 1000) // Remove jobs older than 5 minutes
 
     let processedJobs = 0
     const availableSlots = maxJobs - this.processingJobs.size
