@@ -4,37 +4,38 @@ import { withErrorHandling, withMethodValidation, withValidation, compose } from
 import { ValidationError, AuthenticationError } from '@/lib/errors'
 import { logger } from '@/lib/logger'
 
-// Webhook validation
+// Webhook validation - TEMPORARY DEBUG MODE
 const validateElevenLabsWebhook = async (req: NextApiRequest) => {
-  // Log what ElevenLabs actually sends for debugging
-  logger.info('ElevenLabs webhook payload', {
+  // 🔍 FULL DEBUG MODE - Log absolutely everything
+  logger.info('🔍 ElevenLabs Debug Webhook - Full Request', {
+    method: req.method,
+    url: req.url,
+    query: req.query,
     headers: req.headers,
     body: req.body,
-    bodyKeys: Object.keys(req.body || {}),
-    contentType: req.headers['content-type']
+    bodyType: typeof req.body,
+    bodyKeys: req.body ? Object.keys(req.body) : [],
+    contentType: req.headers['content-type'],
+    userAgent: req.headers['user-agent'],
+    timestamp: new Date().toISOString()
   })
 
-  const { task_id, status, request_id } = req.body
-
-  // Accept either task_id or request_id (ElevenLabs might use either)
-  const actualTaskId = task_id || request_id
-  
-  if (!actualTaskId) {
-    throw new ValidationError('Missing required field: task_id or request_id', {
-      received: req.body,
-      missing: {
-        task_id: !task_id,
-        request_id: !request_id
-      }
+  // Log body content in detail
+  if (req.body) {
+    logger.info('🔍 ElevenLabs Debug Webhook - Body Details', {
+      bodyStringified: JSON.stringify(req.body, null, 2),
+      bodyValues: Object.entries(req.body).map(([key, value]) => ({
+        key,
+        value,
+        type: typeof value,
+        isNull: value === null,
+        isUndefined: value === undefined
+      }))
     })
   }
 
-  // Status might be optional for some webhook types
-  logger.info('ElevenLabs webhook validation passed', {
-    taskId: actualTaskId,
-    status: status || 'unknown',
-    hasStatus: !!status
-  })
+  // DON'T VALIDATE ANYTHING - JUST LOG AND CONTINUE
+  logger.info('🔍 Debug mode - skipping validation, accepting all webhooks')
 
   // Validate webhook signature if provided
   const signature = req.headers['x-elevenlabs-signature'] as string
@@ -42,13 +43,8 @@ const validateElevenLabsWebhook = async (req: NextApiRequest) => {
     const payload = JSON.stringify(req.body)
     const { elevenLabsService } = await import('@/services/elevenlabs')
     
-    const isValidSignature = elevenLabsService.validateWebhookSignature(payload, signature)
-    if (!isValidSignature) {
-      throw new AuthenticationError('Invalid webhook signature', { 
-        hasSignature: !!signature,
-        taskId: task_id
-      })
-    }
+    // SKIP SIGNATURE VALIDATION IN DEBUG MODE
+    logger.info('🔍 Debug mode - skipping signature validation')
   }
 }
 
@@ -56,42 +52,27 @@ const handler = compose(
   withMethodValidation(['POST']),
   withValidation(validateElevenLabsWebhook)
 )(async (req, res, context) => {
-  const { task_id, status, result, error, request_id } = req.body
-  const segmentId = req.query.segmentId as string
-  
-  // Use either task_id or request_id
-  const actualTaskId = task_id || request_id
-
-  logger.businessEvent('elevenlabs-webhook-received', {
-    ...context,
-    taskId: actualTaskId,
-    status: status || 'unknown',
-    segmentId: segmentId || 'lookup-by-task-id',
-    hasResult: !!result,
-    hasError: !!error,
-    originalPayload: req.body
+  // TEMPORARY DEBUG MODE - Just log and return success
+  logger.info('🔍 ElevenLabs Webhook Handler - DEBUG MODE', {
+    body: req.body,
+    query: req.query,
+    method: req.method,
+    url: req.url
   })
 
-  // Process webhook with enhanced context
-  await transcriptionService.handleElevenLabsWebhook({
-    task_id: actualTaskId,
-    status: status || 'completed', // Default to completed if no status
-    result,
-    error,
-    segmentId // Pass segment ID for better tracking
-  })
+  // For now, just return success without processing
+  // This allows us to see what ElevenLabs sends without errors
 
-  logger.businessEvent('elevenlabs-webhook-processed', {
+  logger.businessEvent('elevenlabs-webhook-debug-processed', {
     ...context,
-    taskId: task_id,
-    status,
-    segmentId
+    receivedPayload: req.body,
+    debugMode: true
   })
 
   res.status(200).json({ 
-    message: 'Webhook processed successfully',
-    taskId: task_id,
-    segmentId
+    message: 'Debug webhook processed successfully',
+    timestamp: new Date().toISOString(),
+    receivedData: req.body
   })
 })
 
