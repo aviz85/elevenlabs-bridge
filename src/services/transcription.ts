@@ -93,13 +93,14 @@ export class TranscriptionService {
           )
         }
       } else {
-        // Mock file object - assume file is already in Google Cloud Storage
-        uploadedPath = `temp/${file.name}`
-        logger.info('Using pre-uploaded file for Google Cloud Functions', {
+        // Mock file object - create a special path that audio processing will recognize
+        uploadedPath = `mock-file-${task.id}/${file.name}`
+        logger.info('Using mock file approach for Google Cloud Functions', {
           taskId: task.id,
           fileSize: fileSize,
           filename: file.name,
-          mockFile: true
+          mockFile: true,
+          uploadedPath
         })
       }
 
@@ -283,8 +284,9 @@ export class TranscriptionService {
             })
           }
         } catch (error) {
-          logger.warn('Failed to find segment by segment ID', error as Error, {
-            segmentId: payload.segmentId
+          logger.warn('Failed to find segment by segment ID', {
+            segmentId: payload.segmentId,
+            error: (error as Error).message
           })
         }
       }
