@@ -56,32 +56,47 @@ export class TranscriptionService {
     try {
       logger.info('Processing real audio file', { taskId: task.id, filename: file.name })
 
-      // Convert File to Buffer
-      const arrayBuffer = await file.arrayBuffer()
-      const fileBuffer = Buffer.from(arrayBuffer)
-
-      // Check if we're using Google Cloud Functions and if file is large
-      const useGoogle = process.env.USE_GOOGLE_CLOUD_FUNCTIONS === 'true'
-      const isLargeFile = fileBuffer.length > 50 * 1024 * 1024 // 50MB threshold
+      // Check if this is a real File object or just metadata
+      const isRealFile = typeof file.arrayBuffer === 'function'
       
       let uploadedPath: string
+      let fileSize: number = file.size || 0
 
-      if (useGoogle && isLargeFile) {
-        // For Google Cloud Functions with large files, we'll bypass Supabase Storage
-        // and use the filename as a reference since Google has the file already
-        uploadedPath = `temp/${file.name}`
-        logger.info('Large file detected, bypassing Supabase Storage for Google Cloud Functions', {
-          taskId: task.id,
-          fileSize: fileBuffer.length,
-          filename: file.name
-        })
+      if (isRealFile) {
+        // Real file upload - convert to buffer
+        const arrayBuffer = await file.arrayBuffer()
+        const fileBuffer = Buffer.from(arrayBuffer)
+        fileSize = fileBuffer.length
+
+        // Check if we're using Google Cloud Functions and if file is large
+        const useGoogle = process.env.USE_GOOGLE_CLOUD_FUNCTIONS === 'true'
+        const isLargeFile = fileSize > 50 * 1024 * 1024 // 50MB threshold
+        
+        if (useGoogle && isLargeFile) {
+          // For Google Cloud Functions with large files, we'll bypass Supabase Storage
+          uploadedPath = `temp/${file.name}`
+          logger.info('Large file detected, bypassing Supabase Storage for Google Cloud Functions', {
+            taskId: task.id,
+            fileSize: fileSize,
+            filename: file.name
+          })
+        } else {
+          // Upload file to Supabase Storage for processing (normal path)
+          uploadedPath = await audioProcessingService.uploadFileForProcessing(
+            fileBuffer,
+            file.name,
+            task.id
+          )
+        }
       } else {
-        // Upload file to Supabase Storage for processing (normal path)
-        uploadedPath = await audioProcessingService.uploadFileForProcessing(
-          fileBuffer,
-          file.name,
-          task.id
-        )
+        // Mock file object - assume file is already in Google Cloud Storage
+        uploadedPath = `temp/${file.name}`
+        logger.info('Using pre-uploaded file for Google Cloud Functions', {
+          taskId: task.id,
+          fileSize: fileSize,
+          filename: file.name,
+          mockFile: true
+        })
       }
 
       // Process audio using the appropriate service
