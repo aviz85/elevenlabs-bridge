@@ -13,7 +13,7 @@ export class ElevenLabsService {
     monitoringPeriod: 300000, // 5 minutes
     expectedErrors: ['Invalid API key', 'Authentication failed']
   })
-  private readonly requestTimeout = 30000 // 30 seconds
+  private readonly requestTimeout = 300000 // 5 minutes - large audio files need more time
 
   constructor(apiKey?: string) {
     this.apiKey = apiKey || config.elevenlabs.apiKey
